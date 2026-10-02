@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.ui.screens
+package com.intellguide.intellguide.ui.screens
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -28,10 +28,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.intellguide.saarthi.ui.Screen
-import com.intellguide.saarthi.ui.VoiceUiState
-import com.intellguide.saarthi.ui.VoiceViewModel
-import com.intellguide.saarthi.ui.theme.*
+import com.intellguide.intellguide.ui.Screen
+import com.intellguide.intellguide.ui.VoiceUiState
+import com.intellguide.intellguide.ui.VoiceViewModel
+import com.intellguide.intellguide.ui.theme.*
 import kotlin.math.sin
 
 @Composable
@@ -148,7 +148,7 @@ fun TopHeaderSection() {
                 modifier = Modifier.size(28.dp)
             )
             Text(
-                text = "Saarthi AI",
+                text = "IntellGuide AI",
                 style = MaterialTheme.typography.headlineLarge.copy(fontSize = 28.sp),
                 color = TextWhite,
                 fontWeight = FontWeight.Bold
@@ -462,7 +462,7 @@ fun LiveSpeechTranscriptCard(
                 }
             }
 
-            // Saarthi's voice output
+            // IntellGuide's voice output
             if (spokenResponse.isNotEmpty()) {
                 Row(
                     verticalAlignment = Alignment.Top,
@@ -471,7 +471,7 @@ fun LiveSpeechTranscriptCard(
                     Text(text = "🤖", fontSize = 14.sp)
                     Column {
                         Text(
-                            text = "Saarthi replied:",
+                            text = "IntellGuide replied:",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextMuted
                         )

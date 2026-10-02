@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.ui.screens
+package com.intellguide.intellguide.ui.screens
 
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -21,15 +21,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.intellguide.saarthi.camera.CameraManager
-import com.intellguide.saarthi.camera.FrameMetrics
-import com.intellguide.saarthi.ui.VoiceUiState
-import com.intellguide.saarthi.ui.VoiceViewModel
-import com.intellguide.saarthi.ui.components.BoundingBoxOverlay
-import com.intellguide.saarthi.ui.theme.*
-import com.intellguide.saarthi.vision.DetectedObjectInfo
-import com.intellguide.saarthi.vision.SpeechAlertDebouncer
-import com.intellguide.saarthi.vision.TFLiteObjectDetector
+import com.intellguide.intellguide.camera.CameraManager
+import com.intellguide.intellguide.camera.FrameMetrics
+import com.intellguide.intellguide.ui.VoiceUiState
+import com.intellguide.intellguide.ui.VoiceViewModel
+import com.intellguide.intellguide.ui.components.BoundingBoxOverlay
+import com.intellguide.intellguide.ui.theme.*
+import com.intellguide.intellguide.vision.DetectedObjectInfo
+import com.intellguide.intellguide.vision.SpeechAlertDebouncer
+import com.intellguide.intellguide.vision.TFLiteObjectDetector
 
 @Composable
 fun CameraPreviewScreen(
@@ -342,7 +342,7 @@ fun CameraPermissionPrompt(onRequestPermission: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Saarthi needs camera access to analyze your environment and detect obstacles in real time.",
+            text = "IntellGuide needs camera access to analyze your environment and detect obstacles in real time.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center

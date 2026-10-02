@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.camera
+package com.intellguide.intellguide.camera
 
 import android.content.Context
 import android.util.Log

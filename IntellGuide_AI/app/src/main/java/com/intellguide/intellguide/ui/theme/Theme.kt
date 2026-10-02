@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.ui.theme
+package com.intellguide.intellguide.ui.theme
 
 import android.app.Activity
 import android.content.Context
@@ -29,7 +29,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 @Composable
-fun SaarthiTheme(
+fun IntellGuideTheme(
     content: @Composable () -> Unit
 ) {
     val colorScheme = DarkColorScheme

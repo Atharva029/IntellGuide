@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.vision
+package com.intellguide.intellguide.vision
 
 import android.content.Context
 import android.graphics.Bitmap

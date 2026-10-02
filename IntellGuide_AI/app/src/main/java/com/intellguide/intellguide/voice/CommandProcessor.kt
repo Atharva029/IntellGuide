@@ -1,7 +1,7 @@
-package com.intellguide.saarthi.voice
+package com.intellguide.intellguide.voice
 
 /**
- * Enumeration of all recognized voice command intents across Saarthi modules.
+ * Enumeration of all recognized voice command intents across IntellGuide modules.
  */
 enum class VoiceIntent {
     GREETING,
@@ -21,7 +21,7 @@ enum class VoiceIntent {
  * Result returned after intent parsing.
  * @param intent The identified intent enum.
  * @param rawText The raw transcribed spoken text.
- * @param spokenResponse Natural language text that Saarthi will speak back via TTS.
+ * @param spokenResponse Natural language text that IntellGuide will speak back via TTS.
  * @param actionTitle Short description of the triggered action.
  */
 data class CommandResult(
@@ -32,7 +32,7 @@ data class CommandResult(
 )
 
 /**
- * Intelligent Intent Processor for Saarthi AI.
+ * Intelligent Intent Processor for IntellGuide AI.
  * Uses flexible semantic keyword matching to understand natural variations of commands.
  */
 object CommandProcessor {
@@ -104,11 +104,11 @@ object CommandProcessor {
                 actionTitle = "Daily Routes Active"
             )
 
-            // 8. Greeting / Hello Saarthi
+            // 8. Greeting / Hello IntellGuide
             isGreeting(normalized) -> CommandResult(
                 intent = VoiceIntent.GREETING,
                 rawText = spokenText,
-                spokenResponse = "Hello! I am Saarthi. How can I help you today?",
+                spokenResponse = "Hello! I am IntellGuide. How can I help you today?",
                 actionTitle = "Greeting Received"
             )
 
@@ -138,10 +138,10 @@ object CommandProcessor {
     }
 
     private fun isGreeting(text: String): Boolean {
-        return text.contains("hello") || text.contains("hi saarthi") || 
-               text.contains("hey saarthi") || text.contains("namaste") ||
+        return text.contains("hello") || text.contains("hi intellguide") || 
+               text.contains("hey intellguide") || text.contains("namaste") ||
                text.contains("good morning") || text.contains("good afternoon") ||
-               text.contains("good evening") || text == "hi" || text == "saarthi"
+               text.contains("good evening") || text == "hi" || text == "intellguide"
     }
 
     private fun isStartNavigation(text: String): Boolean {

@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.ui.components
+package com.intellguide.intellguide.ui.components
 
 import android.graphics.Paint
 import android.graphics.Rect
@@ -14,11 +14,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
-import com.intellguide.saarthi.ui.theme.AccentCyan
-import com.intellguide.saarthi.ui.theme.DarkBackground
-import com.intellguide.saarthi.ui.theme.PrimaryBlue
-import com.intellguide.saarthi.ui.theme.SuccessGreen
-import com.intellguide.saarthi.vision.DetectedObjectInfo
+import com.intellguide.intellguide.ui.theme.AccentCyan
+import com.intellguide.intellguide.ui.theme.DarkBackground
+import com.intellguide.intellguide.ui.theme.PrimaryBlue
+import com.intellguide.intellguide.ui.theme.SuccessGreen
+import com.intellguide.intellguide.vision.DetectedObjectInfo
 
 @Composable
 fun BoundingBoxOverlay(

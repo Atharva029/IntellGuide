@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.voice
+package com.intellguide.intellguide.voice
 
 import android.content.Context
 import android.content.Intent

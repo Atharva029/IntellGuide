@@ -1,4 +1,4 @@
-package com.intellguide.saarthi
+package com.intellguide.intellguide
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -19,13 +19,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
-import com.intellguide.saarthi.ui.Screen
-import com.intellguide.saarthi.ui.VoiceViewModel
-import com.intellguide.saarthi.ui.screens.CameraPreviewScreen
-import com.intellguide.saarthi.ui.screens.DashboardScreen
-import com.intellguide.saarthi.ui.screens.ModuleDetailScreen
-import com.intellguide.saarthi.ui.screens.VoiceScreen
-import com.intellguide.saarthi.ui.theme.SaarthiTheme
+import com.intellguide.intellguide.ui.Screen
+import com.intellguide.intellguide.ui.VoiceViewModel
+import com.intellguide.intellguide.ui.screens.CameraPreviewScreen
+import com.intellguide.intellguide.ui.screens.DashboardScreen
+import com.intellguide.intellguide.ui.screens.ModuleDetailScreen
+import com.intellguide.intellguide.ui.screens.VoiceScreen
+import com.intellguide.intellguide.ui.theme.IntellGuideTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            SaarthiTheme {
+            IntellGuideTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

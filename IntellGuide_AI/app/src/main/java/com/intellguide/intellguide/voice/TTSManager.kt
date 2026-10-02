@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.voice
+package com.intellguide.intellguide.voice
 
 import android.content.Context
 import android.os.Bundle
@@ -8,7 +8,7 @@ import android.util.Log
 import java.util.Locale
 
 /**
- * Manages Text-To-Speech (TTS) engine for Saarthi AI.
+ * Manages Text-To-Speech (TTS) engine for IntellGuide AI.
  * Converts response strings into natural audible voice output for visually impaired users.
  */
 class TTSManager(
@@ -111,7 +111,7 @@ class TTSManager(
         this.onSpeechStartCallback = onStart
         this.onSpeechDoneCallback = onDone
 
-        val utteranceId = "Saarthi_Speech_${System.currentTimeMillis()}"
+        val utteranceId = "IntellGuide_Speech_${System.currentTimeMillis()}"
         val params = Bundle().apply {
             putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
         }

@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.ui.screens
+package com.intellguide.intellguide.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,10 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.intellguide.saarthi.ui.Screen
-import com.intellguide.saarthi.ui.VoiceUiState
-import com.intellguide.saarthi.ui.VoiceViewModel
-import com.intellguide.saarthi.ui.theme.*
+import com.intellguide.intellguide.ui.Screen
+import com.intellguide.intellguide.ui.VoiceUiState
+import com.intellguide.intellguide.ui.VoiceViewModel
+import com.intellguide.intellguide.ui.theme.*
 
 data class DashboardCardItem(
     val title: String,

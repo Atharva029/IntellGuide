@@ -1,13 +1,13 @@
-package com.intellguide.saarthi.ui
+package com.intellguide.intellguide.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.intellguide.saarthi.voice.CommandProcessor
-import com.intellguide.saarthi.voice.CommandResult
-import com.intellguide.saarthi.voice.SpeechRecognizerManager
-import com.intellguide.saarthi.voice.TTSManager
-import com.intellguide.saarthi.voice.VoiceIntent
+import com.intellguide.intellguide.voice.CommandProcessor
+import com.intellguide.intellguide.voice.CommandResult
+import com.intellguide.intellguide.voice.SpeechRecognizerManager
+import com.intellguide.intellguide.voice.TTSManager
+import com.intellguide.intellguide.voice.VoiceIntent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,7 +20,7 @@ enum class VoiceUiState {
     IDLE,        // Ready, waiting for user tap
     LISTENING,   // Mic is actively capturing audio
     PROCESSING,  // Analyzing speech and matching intent
-    SPEAKING,    // Saarthi is speaking response via TTS
+    SPEAKING,    // IntellGuide is speaking response via TTS
     ERROR        // Error occurred (e.g. no speech / permission denied)
 }
 
@@ -129,7 +129,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
      * Speaks initial onboarding greeting on app launch.
      */
     fun speakWelcomeGreeting() {
-        speakFeedback("Hello! Welcome to Saarthi. How may I help you today? Tap the microphone button to give a command, or say 'Go to dashboard'.")
+        speakFeedback("Hello! Welcome to IntellGuide. How may I help you today? Tap the microphone button to give a command, or say 'Go to dashboard'.")
     }
 
     private fun handleSpeechResult(spokenText: String) {

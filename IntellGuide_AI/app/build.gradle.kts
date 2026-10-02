@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.intellguide.saarthi"
+    namespace = "com.intellguide.intellguide"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.intellguide.saarthi"
+        applicationId = "com.intellguide.intellguide"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

@@ -1,7 +1,7 @@
-package com.intellguide.saarthi.ui
+package com.intellguide.intellguide.ui
 
 /**
- * Represents navigation screens across the Saarthi application.
+ * Represents navigation screens across the IntellGuide application.
  */
 sealed class Screen(val route: String) {
     object VoiceWelcome : Screen("voice_welcome")

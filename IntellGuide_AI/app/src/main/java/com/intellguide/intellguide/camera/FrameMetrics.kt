@@ -1,4 +1,4 @@
-package com.intellguide.saarthi.camera
+package com.intellguide.intellguide.camera
 
 /**
  * Real-time performance metrics for the camera sampling pipeline.
