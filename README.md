@@ -10,7 +10,7 @@
 
 ## 📌 Project Overview
 
-**Saarthi** (meaning *"Guide / Companion"*) is an intelligent Android application designed to assist **blind and visually impaired individuals** in navigating their environment safely and independently. 
+**IntellGuide AI** is an intelligent Android application designed to assist **blind and visually impaired individuals** in navigating their environment safely and independently. 
 
 By combining real-time computer vision, local machine learning models, and hands-free voice interactions, Saarthi acts as a virtual guide — recognizing surroundings, detecting obstacles, reading text, and providing clear real-time audio guidance through Text-to-Speech (TTS).
 
