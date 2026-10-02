@@ -1,4 +1,4 @@
-# 👁️ Saarthi — IntellGuide AI
+# 👁️ IntellGuide AI
 > **An AI-powered Smart Assistive Companion for Visually Impaired Users**
 
 [![Android](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
