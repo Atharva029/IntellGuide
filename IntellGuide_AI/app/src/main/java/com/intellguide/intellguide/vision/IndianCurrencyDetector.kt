@@ -65,14 +65,16 @@ class IndianCurrencyDetector(private val context: Context) {
     private val confidenceThreshold = 0.45f
 
     // Class index → Indian Rupee denomination map
-    // IMPORTANT: Reorder these if your dataset classes are in a different order
+    // Exact class order from trained YOLOv26n dataset:
+    // {0: '10', 1: '100', 2: '20', 3: '200', 4: '2000', 5: '50', 6: '500'}
     private val classIndexToDenomination = mapOf(
         0 to 10,
-        1 to 20,
-        2 to 50,
-        3 to 100,
-        4 to 200,
-        5 to 500
+        1 to 100,
+        2 to 20,
+        3 to 200,
+        4 to 2000,
+        5 to 50,
+        6 to 500
     )
 
     private var interpreter: Interpreter? = null
@@ -80,7 +82,7 @@ class IndianCurrencyDetector(private val context: Context) {
         private set
     var modelType: String = "None"
         private set
-    var numClasses: Int = 6
+    var numClasses: Int = 7  // {0:10, 1:100, 2:20, 3:200, 4:2000, 5:50, 6:500}
         private set
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -294,6 +296,7 @@ class IndianCurrencyDetector(private val context: Context) {
             100 -> "Lavender" to "100 Rupee Note"
             200 -> "Bright Yellow" to "200 Rupee Note"
             500 -> "Stone Grey" to "500 Rupee Note"
+            2000 -> "Magenta Pink" to "2000 Rupee Note"
             else -> "Indian Banknote" to "$denom Rupee Note"
         }
         return CurrencyDetectionResult(
