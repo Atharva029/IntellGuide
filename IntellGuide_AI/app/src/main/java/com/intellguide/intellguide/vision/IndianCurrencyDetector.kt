@@ -230,9 +230,8 @@ class IndianCurrencyDetector(private val context: Context) {
         }
         inputBuffer.rewind()
 
-        // 2. Prepare output buffer — YOLOv8 output shape: [1, 4+numClasses, 8400]
+        // 2. Prepare output buffer — YOLOv8/v26 output shape: [1, 4+numClasses, 8400]
         val numAnchors = 8400
-        val outputShape = intArrayOf(1, 4 + numClasses, numAnchors)
         val outputBuffer = Array(1) { Array(4 + numClasses) { FloatArray(numAnchors) } }
 
         // 3. Run inference
