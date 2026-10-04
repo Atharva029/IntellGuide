@@ -35,7 +35,11 @@ data class CurrencyDetectionResult(
  */
 private data class YoloDetectionBox(
     val classIndex: Int,
-    val confidence: Float
+    val confidence: Float,
+    val xCenter: Float,
+    val yCenter: Float,
+    val w: Float,
+    val h: Float
 )
 
 /**
@@ -61,8 +65,8 @@ class IndianCurrencyDetector(private val context: Context) {
     // Input image size for your YOLO model (adjust if your model uses a different size)
     private val yoloInputSize = 640
 
-    // Confidence threshold for YOLO detections (lowered for live mobile camera frames)
-    private val confidenceThreshold = 0.25f
+    // Confidence threshold for YOLO detections (lowered for live mobile camera frames in hand/table)
+    private val confidenceThreshold = 0.20f
 
     // Class index → Indian Rupee denomination map
     // Exact class order from trained YOLOv26n dataset:
@@ -268,10 +272,14 @@ class IndianCurrencyDetector(private val context: Context) {
                     }
                     if (bestScore > maxScore) maxScore = bestScore
                     if (bestScore >= confidenceThreshold && bestClass >= 0) {
-                        detections.add(YoloDetectionBox(bestClass, bestScore))
+                        val cx = raw[0][anchor]
+                        val cy = raw[1][anchor]
+                        val w = raw[2][anchor]
+                        val h = raw[3][anchor]
+                        detections.add(YoloDetectionBox(bestClass, bestScore, cx, cy, w, h))
                     }
                 }
-                Log.d(tag, "[YOLO FormatA] raw detections (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
+                Log.d(tag, "[YOLO FormatA] raw candidates (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
             } else {
                 // Format B: [1, 8400, 4+numClasses]
                 val outputBuffer = Array(1) { Array(numAnchors) { FloatArray(4 + numClasses) } }
@@ -287,25 +295,71 @@ class IndianCurrencyDetector(private val context: Context) {
                     }
                     if (bestScore > maxScore) maxScore = bestScore
                     if (bestScore >= confidenceThreshold && bestClass >= 0) {
-                        detections.add(YoloDetectionBox(bestClass, bestScore))
+                        val cx = raw[anchor][0]
+                        val cy = raw[anchor][1]
+                        val w = raw[anchor][2]
+                        val h = raw[anchor][3]
+                        detections.add(YoloDetectionBox(bestClass, bestScore, cx, cy, w, h))
                     }
                 }
-                Log.d(tag, "[YOLO FormatB] raw detections (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
+                Log.d(tag, "[YOLO FormatB] raw candidates (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
             }
         } catch (e: Exception) {
             Log.e(tag, "[YOLO] run() failed — tensor mismatch? outputShape=${outputTensorShape.contentToString()}", e)
             return emptyList()
         }
 
-        // NMS: keep highest-confidence detection per class, up to 5 notes
-        val result = detections
-            .groupBy { it.classIndex }
-            .map { (_, group) -> group.maxByOrNull { it.confidence }!! }
-            .sortedByDescending { it.confidence }
-            .take(5)
+        // Apply Spatial Non-Maximum Suppression (IoU threshold = 0.45)
+        // Keeps separate notes (even if same denomination) while eliminating redundant overlapping boxes for the same note
+        val sortedDetections = detections.sortedByDescending { it.confidence }
+        val nmsResults = mutableListOf<YoloDetectionBox>()
 
-        Log.d(tag, "[YOLO] Final: ${result.map { "₹${classIndexToDenomination[it.classIndex]} conf=${"%.2f".format(it.confidence)}" }}")
-        return result
+        for (candidate in sortedDetections) {
+            var isOverlapping = false
+            for (kept in nmsResults) {
+                if (calculateIoU(candidate, kept) > 0.45f) {
+                    isOverlapping = true
+                    break
+                }
+            }
+            if (!isOverlapping) {
+                nmsResults.add(candidate)
+            }
+            if (nmsResults.size >= 5) break // Max 5 notes per frame
+        }
+
+        Log.d(tag, "[YOLO] Spatial NMS Final (${nmsResults.size} notes): ${nmsResults.map { "₹${classIndexToDenomination[it.classIndex]} conf=${"%.2f".format(it.confidence)}" }}")
+        return nmsResults
+    }
+
+    /**
+     * Calculate Intersection over Union (IoU) between two bounding boxes
+     */
+    private fun calculateIoU(a: YoloDetectionBox, b: YoloDetectionBox): Float {
+        val aMinX = a.xCenter - a.w / 2f
+        val aMaxX = a.xCenter + a.w / 2f
+        val aMinY = a.yCenter - a.h / 2f
+        val aMaxY = a.yCenter + a.h / 2f
+
+        val bMinX = b.xCenter - b.w / 2f
+        val bMaxX = b.xCenter + b.w / 2f
+        val bMinY = b.yCenter - b.h / 2f
+        val bMaxY = b.yCenter + b.h / 2f
+
+        val interMinX = maxOf(aMinX, bMinX)
+        val interMaxX = minOf(aMaxX, bMaxX)
+        val interMinY = maxOf(aMinY, bMinY)
+        val interMaxY = minOf(aMaxY, bMaxY)
+
+        val interWidth = maxOf(0f, interMaxX - interMinX)
+        val interHeight = maxOf(0f, interMaxY - interMinY)
+        val interArea = interWidth * interHeight
+
+        val aArea = a.w * a.h
+        val bArea = b.w * b.h
+        val unionArea = aArea + bArea - interArea
+
+        return if (unionArea <= 0f) 0f else interArea / unionArea
     }
 
 
