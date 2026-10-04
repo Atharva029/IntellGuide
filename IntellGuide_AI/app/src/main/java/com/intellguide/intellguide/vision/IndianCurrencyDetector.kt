@@ -238,18 +238,18 @@ class IndianCurrencyDetector(private val context: Context) {
     private fun runYoloInference(bitmap: Bitmap): List<YoloDetectionBox> {
         val interp = interpreter ?: return emptyList()
 
-        // 1. Pre-process: Resize and normalize to [0.0, 1.0] float32
+        // 1. Ultra-fast bulk preprocessing (bulk getPixels instead of 640x640 getPixel loops)
         val resized = Bitmap.createScaledBitmap(bitmap, yoloInputSize, yoloInputSize, true)
+        val intValues = IntArray(yoloInputSize * yoloInputSize)
+        resized.getPixels(intValues, 0, yoloInputSize, 0, 0, yoloInputSize, yoloInputSize)
+
         val inputBuffer = ByteBuffer.allocateDirect(1 * yoloInputSize * yoloInputSize * 3 * 4)
             .apply { order(ByteOrder.nativeOrder()) }
 
-        for (y in 0 until yoloInputSize) {
-            for (x in 0 until yoloInputSize) {
-                val pixel = resized.getPixel(x, y)
-                inputBuffer.putFloat(Color.red(pixel) / 255.0f)
-                inputBuffer.putFloat(Color.green(pixel) / 255.0f)
-                inputBuffer.putFloat(Color.blue(pixel) / 255.0f)
-            }
+        for (pixelValue in intValues) {
+            inputBuffer.putFloat(((pixelValue shr 16) and 0xFF) / 255.0f)
+            inputBuffer.putFloat(((pixelValue shr 8) and 0xFF) / 255.0f)
+            inputBuffer.putFloat((pixelValue and 0xFF) / 255.0f)
         }
         inputBuffer.rewind()
 
@@ -309,15 +309,17 @@ class IndianCurrencyDetector(private val context: Context) {
             return emptyList()
         }
 
-        // Apply Spatial Non-Maximum Suppression (IoU threshold = 0.45)
-        // Keeps separate notes (even if same denomination) while eliminating redundant overlapping boxes for the same note
+        // Apply Class-Aware Spatial Non-Maximum Suppression (IoU threshold = 0.50 for same class, 0.85 for any class)
+        // This allows multiple DIFFERENT currency notes held together overlapping in hand to all be detected!
         val sortedDetections = detections.sortedByDescending { it.confidence }
         val nmsResults = mutableListOf<YoloDetectionBox>()
 
         for (candidate in sortedDetections) {
             var isOverlapping = false
             for (kept in nmsResults) {
-                if (calculateIoU(candidate, kept) > 0.45f) {
+                val iou = calculateIoU(candidate, kept)
+                // Suppress if same class and overlapping (>0.50 IoU), OR if exact duplicate box (>0.85 IoU)
+                if ((candidate.classIndex == kept.classIndex && iou > 0.50f) || iou > 0.85f) {
                     isOverlapping = true
                     break
                 }
@@ -328,7 +330,7 @@ class IndianCurrencyDetector(private val context: Context) {
             if (nmsResults.size >= 5) break // Max 5 notes per frame
         }
 
-        Log.d(tag, "[YOLO] Spatial NMS Final (${nmsResults.size} notes): ${nmsResults.map { "₹${classIndexToDenomination[it.classIndex]} conf=${"%.2f".format(it.confidence)}" }}")
+        Log.d(tag, "[YOLO] Class-Aware NMS Final (${nmsResults.size} notes): ${nmsResults.map { "₹${classIndexToDenomination[it.classIndex]} conf=${"%.2f".format(it.confidence)}" }}")
         return nmsResults
     }
 
