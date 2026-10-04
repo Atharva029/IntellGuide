@@ -84,6 +84,10 @@ class IndianCurrencyDetector(private val context: Context) {
         private set
     var numClasses: Int = 7  // {0:10, 1:100, 2:20, 3:200, 4:2000, 5:50, 6:500}
         private set
+    // Actual output tensor shape read from model at load time
+    private var outputTensorShape: IntArray = intArrayOf()
+    // True if output is [1, 4+N, 8400], false if [1, 8400, 4+N]
+    private var isFeatureFirst: Boolean = true
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
@@ -111,17 +115,30 @@ class IndianCurrencyDetector(private val context: Context) {
                     isTfliteModelLoaded = true
                     modelType = "YOLO Raw Interpreter"
 
-                    // Read output tensor shape to determine number of classes
-                    val outputShape = interpreter!!.getOutputTensor(0).shape()
-                    Log.d(tag, "Model output tensor shape: ${outputShape.contentToString()}")
+                    // --- Diagnostic: dump ALL tensor info ---
+                    val inputShape = interpreter!!.getInputTensor(0).shape()
+                    outputTensorShape = interpreter!!.getOutputTensor(0).shape()
+                    Log.d(tag, "[YOLO INIT] Input tensor:  ${inputShape.contentToString()}")
+                    Log.d(tag, "[YOLO INIT] Output tensor: ${outputTensorShape.contentToString()}")
 
-                    // YOLOv8/v26 output: [1, 4+numClasses, 8400]
-                    if (outputShape.size >= 2) {
-                        val rawNumClasses = outputShape[1] - 4
-                        if (rawNumClasses > 0) numClasses = rawNumClasses
+                    // Detect output layout:
+                    //   Format A (YOLOv8 standard): [1, 4+numClasses, 8400] → dim[1] < dim[2]
+                    //   Format B (transposed):      [1, 8400, 4+numClasses] → dim[1] > dim[2]
+                    if (outputTensorShape.size == 3) {
+                        val dim1 = outputTensorShape[1]
+                        val dim2 = outputTensorShape[2]
+                        if (dim1 < dim2) {
+                            // Format A: features are rows
+                            isFeatureFirst = true
+                            numClasses = dim1 - 4
+                        } else {
+                            // Format B: anchors are rows
+                            isFeatureFirst = false
+                            numClasses = dim2 - 4
+                        }
                     }
 
-                    Log.d(tag, "Loaded YOLOv26n model: $modelName | Classes: $numClasses | Input: ${yoloInputSize}x${yoloInputSize}")
+                    Log.d(tag, "[YOLO INIT] Layout: ${if (isFeatureFirst) "[1, 4+N, 8400]" else "[1, 8400, 4+N]"} | Classes: $numClasses")
                     return
                 } catch (e: Exception) {
                     Log.e(tag, "Failed loading $modelName as raw YOLO Interpreter", e)
@@ -210,7 +227,9 @@ class IndianCurrencyDetector(private val context: Context) {
 
     /**
      * Runs YOLOv8/v26n TFLite inference using the raw Interpreter API.
-     * Handles standard YOLOv8 output format: [1, 4+numClasses, 8400]
+     * Automatically handles two common YOLO TFLite output formats:
+     *   Format A: [1, 4+numClasses, 8400]  (standard YOLOv8 export, isFeatureFirst=true)
+     *   Format B: [1, 8400, 4+numClasses]  (transposed variant, isFeatureFirst=false)
      */
     private fun runYoloInference(bitmap: Bitmap): List<YoloDetectionBox> {
         val interp = interpreter ?: return emptyList()
@@ -230,41 +249,61 @@ class IndianCurrencyDetector(private val context: Context) {
         }
         inputBuffer.rewind()
 
-        // 2. Prepare output buffer — YOLOv8/v26 output shape: [1, 4+numClasses, 8400]
-        val numAnchors = 8400
-        val outputBuffer = Array(1) { Array(4 + numClasses) { FloatArray(numAnchors) } }
-
-        // 3. Run inference
-        interp.run(inputBuffer, outputBuffer)
-
-        // 4. Post-process: Extract detections above threshold using NMS
         val detections = mutableListOf<YoloDetectionBox>()
-        val raw = outputBuffer[0]
+        val numAnchors = 8400
 
-        for (anchor in 0 until numAnchors) {
-            var bestClassScore = confidenceThreshold
-            var bestClassIndex = -1
-
-            for (c in 0 until numClasses) {
-                val score = raw[4 + c][anchor]
-                if (score > bestClassScore) {
-                    bestClassScore = score
-                    bestClassIndex = c
+        try {
+            if (isFeatureFirst) {
+                // Format A: [1, 4+numClasses, 8400]
+                val outputBuffer = Array(1) { Array(4 + numClasses) { FloatArray(numAnchors) } }
+                interp.run(inputBuffer, outputBuffer)
+                val raw = outputBuffer[0]
+                var maxScore = 0f
+                for (anchor in 0 until numAnchors) {
+                    var bestScore = confidenceThreshold
+                    var bestClass = -1
+                    for (c in 0 until numClasses) {
+                        val score = raw[4 + c][anchor]
+                        if (score > bestScore) { bestScore = score; bestClass = c }
+                    }
+                    if (bestClass >= 0) detections.add(YoloDetectionBox(bestClass, bestScore))
+                    if (bestScore > maxScore) maxScore = bestScore
                 }
+                Log.d(tag, "[YOLO FormatA] raw detections: ${detections.size} | max score: ${"%.3f".format(maxScore)}")
+            } else {
+                // Format B: [1, 8400, 4+numClasses]
+                val outputBuffer = Array(1) { Array(numAnchors) { FloatArray(4 + numClasses) } }
+                interp.run(inputBuffer, outputBuffer)
+                val raw = outputBuffer[0]
+                var maxScore = 0f
+                for (anchor in 0 until numAnchors) {
+                    var bestScore = confidenceThreshold
+                    var bestClass = -1
+                    for (c in 0 until numClasses) {
+                        val score = raw[anchor][4 + c]
+                        if (score > bestScore) { bestScore = score; bestClass = c }
+                    }
+                    if (bestClass >= 0) detections.add(YoloDetectionBox(bestClass, bestScore))
+                    if (bestScore > maxScore) maxScore = bestScore
+                }
+                Log.d(tag, "[YOLO FormatB] raw detections: ${detections.size} | max score: ${"%.3f".format(maxScore)}")
             }
-
-            if (bestClassIndex >= 0) {
-                detections.add(YoloDetectionBox(bestClassIndex, bestClassScore))
-            }
+        } catch (e: Exception) {
+            Log.e(tag, "[YOLO] run() failed — tensor mismatch? outputShape=${outputTensorShape.contentToString()}", e)
+            return emptyList()
         }
 
-        // 5. Group by class, keep highest-confidence detection per class (simple NMS)
-        return detections
+        // NMS: keep highest-confidence detection per class, up to 5 notes
+        val result = detections
             .groupBy { it.classIndex }
             .map { (_, group) -> group.maxByOrNull { it.confidence }!! }
             .sortedByDescending { it.confidence }
-            .take(5) // Max 5 notes per frame
+            .take(5)
+
+        Log.d(tag, "[YOLO] Final: ${result.map { "₹${classIndexToDenomination[it.classIndex]} conf=${"%.2f".format(it.confidence)}" }}")
+        return result
     }
+
 
     private fun detectRupeeDenominationFromText(rawText: String): Int? {
         if (rawText.isBlank()) return null
