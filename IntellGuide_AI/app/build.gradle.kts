@@ -11,7 +11,7 @@ android {
         applicationId = "com.intellguide.intellguide"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
+        versionCode = 10
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
