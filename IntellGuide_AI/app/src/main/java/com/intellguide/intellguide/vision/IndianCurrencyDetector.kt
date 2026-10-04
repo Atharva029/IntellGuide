@@ -186,7 +186,13 @@ class IndianCurrencyDetector(private val context: Context) {
             return
         }
 
-        val bitmap = imageProxy.toBitmap()
+        val rawBitmap = imageProxy.toBitmap()
+        val bitmap = if (rotationDegrees != 0) {
+            val matrix = android.graphics.Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+            Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+        } else {
+            rawBitmap
+        }
 
         // 1. Try YOLOv26n Raw Interpreter
         if (isTfliteModelLoaded && interpreter != null) {
