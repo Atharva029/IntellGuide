@@ -376,7 +376,7 @@ fun CurrencyDetectorScreen(
                             if (!hasMicPermission) {
                                 onRequestMicPermission()
                             } else {
-                                viewModel.startListening()
+                                viewModel.onMicButtonClicked()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
