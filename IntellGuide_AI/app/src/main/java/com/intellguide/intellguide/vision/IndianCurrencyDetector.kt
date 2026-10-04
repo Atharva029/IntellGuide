@@ -61,8 +61,8 @@ class IndianCurrencyDetector(private val context: Context) {
     // Input image size for your YOLO model (adjust if your model uses a different size)
     private val yoloInputSize = 640
 
-    // Confidence threshold for YOLO detections
-    private val confidenceThreshold = 0.45f
+    // Confidence threshold for YOLO detections (lowered for live mobile camera frames)
+    private val confidenceThreshold = 0.25f
 
     // Class index → Indian Rupee denomination map
     // Exact class order from trained YOLOv26n dataset:
@@ -260,16 +260,18 @@ class IndianCurrencyDetector(private val context: Context) {
                 val raw = outputBuffer[0]
                 var maxScore = 0f
                 for (anchor in 0 until numAnchors) {
-                    var bestScore = confidenceThreshold
+                    var bestScore = 0f
                     var bestClass = -1
                     for (c in 0 until numClasses) {
                         val score = raw[4 + c][anchor]
                         if (score > bestScore) { bestScore = score; bestClass = c }
                     }
-                    if (bestClass >= 0) detections.add(YoloDetectionBox(bestClass, bestScore))
                     if (bestScore > maxScore) maxScore = bestScore
+                    if (bestScore >= confidenceThreshold && bestClass >= 0) {
+                        detections.add(YoloDetectionBox(bestClass, bestScore))
+                    }
                 }
-                Log.d(tag, "[YOLO FormatA] raw detections: ${detections.size} | max score: ${"%.3f".format(maxScore)}")
+                Log.d(tag, "[YOLO FormatA] raw detections (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
             } else {
                 // Format B: [1, 8400, 4+numClasses]
                 val outputBuffer = Array(1) { Array(numAnchors) { FloatArray(4 + numClasses) } }
@@ -277,16 +279,18 @@ class IndianCurrencyDetector(private val context: Context) {
                 val raw = outputBuffer[0]
                 var maxScore = 0f
                 for (anchor in 0 until numAnchors) {
-                    var bestScore = confidenceThreshold
+                    var bestScore = 0f
                     var bestClass = -1
                     for (c in 0 until numClasses) {
                         val score = raw[anchor][4 + c]
                         if (score > bestScore) { bestScore = score; bestClass = c }
                     }
-                    if (bestClass >= 0) detections.add(YoloDetectionBox(bestClass, bestScore))
                     if (bestScore > maxScore) maxScore = bestScore
+                    if (bestScore >= confidenceThreshold && bestClass >= 0) {
+                        detections.add(YoloDetectionBox(bestClass, bestScore))
+                    }
                 }
-                Log.d(tag, "[YOLO FormatB] raw detections: ${detections.size} | max score: ${"%.3f".format(maxScore)}")
+                Log.d(tag, "[YOLO FormatB] raw detections (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
             }
         } catch (e: Exception) {
             Log.e(tag, "[YOLO] run() failed — tensor mismatch? outputShape=${outputTensorShape.contentToString()}", e)
