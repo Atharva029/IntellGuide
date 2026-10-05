@@ -9,73 +9,114 @@ import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import org.tensorflow.lite.support.image.TensorImage
-import org.tensorflow.lite.task.core.BaseOptions
-import org.tensorflow.lite.task.vision.classifier.Classifications
-import org.tensorflow.lite.task.vision.classifier.ImageClassifier
+import org.tensorflow.lite.Interpreter
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import java.util.Locale
 
 /**
- * Result representing an identified single or multi-item Indian Rupee banknote or coin set.
+ * Result representing single or multi-note/coin identified Indian Rupee set.
  */
 data class CurrencyDetectionResult(
-    val denomination: Int,           // e.g., 100, 300 (total sum if multi-item)
-    val isCoin: Boolean = false,      // true if coin
-    val label: String,                // "500 Rupee Note" or "Total: ₹300 (2 Items)"
-    val colorSignature: String,       // "Stone Grey" or summary list
+    val denomination: Int,           // e.g., 100, 750 (total sum if multi-item)
+    val isCoin: Boolean = false,      // true if coin set
+    val label: String,                // "500 Rupee Note" or "Total: ₹750 (4 Items)"
+    val colorSignature: String,       // Summary list of detected notes/coins
     val confidence: Float,            // 0.0 to 1.0
-    val spokenAlert: String,          // "Detected 2 notes: One 100 and one 200 rupee note. Total value is 300 rupees."
-    val detectionSource: String       // "TFLite Custom Model" or "Multi-Item Pattern Engine"
+    val spokenAlert: String,          // "Detected 4 items: One 500, two 100 notes, and one 50 coin. Total value is 750 rupees."
+    val detectionSource: String       // "YOLO Multi-Box Model" or "Spatial OCR Block Engine"
+)
+
+private data class YoloBox(
+    val classIndex: Int,
+    val confidence: Float,
+    val xCenter: Float,
+    val yCenter: Float,
+    val w: Float,
+    val h: Float
 )
 
 /**
- * Phase 7 — Indian Currency & Coin Multi-Item Recognition Engine.
- * Supports side-by-side detection of multiple banknotes and coins (e.g. ₹100 note beside ₹200 note or ₹5 coin).
+ * Phase 7 — Advanced Indian Currency & Coin Multi-Object Engine.
+ * Supports detecting 1 to 10+ banknotes and coins simultaneously in any layout (side-by-side, stacked, or spread).
+ *
+ * Engine Pipeline:
+ * 1. Raw YOLO TFLite Interpreter (runs multi-box detection for 1..10+ items simultaneously if asset model present).
+ * 2. Spatial TextBlock ML Kit OCR Analyzer (groups distinct spatial text blocks across the frame for 1..10+ notes/coins).
+ * 3. Currency Aggregator (sums values and formats natural human voice alerts).
  */
 class IndianCurrencyDetector(private val context: Context) {
 
     private val tag = "CurrencyDetector"
-    private var tfliteClassifier: ImageClassifier? = null
+
+    private var interpreter: Interpreter? = null
     var isTfliteModelLoaded: Boolean = false
         private set
+
+    private val yoloInputSize = 640
+    private val confidenceThreshold = 0.25f
+
+    // Standard YOLO Class Index -> Indian Currency mapping:
+    // 0: ₹10, 1: ₹20, 2: ₹50, 3: ₹100, 4: ₹200, 5: ₹500, 6: ₹1 coin, 7: ₹2 coin, 8: ₹5 coin, 9: ₹10 coin, 10: ₹20 coin
+    private val classIndexToItem = mapOf(
+        0 to Pair(10, false),
+        1 to Pair(20, false),
+        2 to Pair(50, false),
+        3 to Pair(100, false),
+        4 to Pair(200, false),
+        5 to Pair(500, false),
+        6 to Pair(1, true),
+        7 to Pair(2, true),
+        8 to Pair(5, true),
+        9 to Pair(10, true),
+        10 to Pair(20, true)
+    )
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     init {
-        initializeTfliteModel()
+        initializeTfliteInterpreter()
     }
 
-    private fun initializeTfliteModel() {
+    private fun initializeTfliteInterpreter() {
         val modelCandidates = listOf(
             "currency_model.tflite",
             "rupee_classifier.tflite",
             "indian_currency.tflite",
-            "coin_currency.tflite",
+            "yolo_currency.tflite",
             "currency.tflite"
         )
 
         for (modelName in modelCandidates) {
             if (hasAsset(modelName)) {
                 try {
-                    val baseOptions = BaseOptions.builder().setNumThreads(2).build()
-                    val options = ImageClassifier.ImageClassifierOptions.builder()
-                        .setBaseOptions(baseOptions)
-                        .setMaxResults(3)
-                        .setScoreThreshold(0.55f)
-                        .build()
-
-                    tfliteClassifier = ImageClassifier.createFromFileAndOptions(context, modelName, options)
+                    val buffer = loadModelFromAsset(modelName)
+                    val options = Interpreter.Options().apply {
+                        numThreads = 2
+                        useXNNPACK = true
+                    }
+                    interpreter = Interpreter(buffer, options)
                     isTfliteModelLoaded = true
-                    Log.d(tag, "Loaded custom Indian Currency & Coin TFLite Model from asset: $modelName")
+                    Log.d(tag, "Loaded custom YOLO Currency TFLite Interpreter: $modelName")
                     return
                 } catch (e: Exception) {
-                    Log.e(tag, "Failed loading currency model $modelName", e)
+                    Log.e(tag, "Failed loading $modelName as YOLO interpreter", e)
                 }
             }
         }
 
         isTfliteModelLoaded = false
-        Log.i(tag, "No custom currency .tflite model found in assets. Multi-Item Pattern Engine active.")
+        Log.i(tag, "No YOLO .tflite asset found. Spatial TextBlock Multi-Note Engine active.")
+    }
+
+    private fun loadModelFromAsset(modelName: String): MappedByteBuffer {
+        val fd = context.assets.openFd(modelName)
+        val inputStream = FileInputStream(fd.fileDescriptor)
+        val channel = inputStream.channel
+        return channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
     }
 
     private fun hasAsset(name: String): Boolean {
@@ -87,7 +128,7 @@ class IndianCurrencyDetector(private val context: Context) {
     }
 
     /**
-     * Processes incoming CameraX ImageProxy frame for single or side-by-side Indian Currency recognition.
+     * Processes incoming CameraX ImageProxy frame for single or multi-item (1 to 10+ notes/coins) recognition.
      */
     @OptIn(ExperimentalGetImage::class)
     fun processFrame(
@@ -104,42 +145,48 @@ class IndianCurrencyDetector(private val context: Context) {
 
         val bitmap = imageProxy.toBitmap()
 
-        // 1. Try Custom TFLite Model first if loaded
-        if (isTfliteModelLoaded && tfliteClassifier != null) {
+        // 1. Try YOLO Multi-Box Object Detection TFLite Model
+        if (isTfliteModelLoaded && interpreter != null) {
             try {
-                val tensorImage = TensorImage.fromBitmap(bitmap)
-                val results: List<Classifications> = tfliteClassifier!!.classify(tensorImage)
-
-                val detectedItems = mutableListOf<Pair<Int, Boolean>>()
-                for (classification in results) {
-                    val topCategory = classification.categories.maxByOrNull { it.score }
-                    if (topCategory != null && topCategory.score >= 0.55f) {
-                        val parsed = parseDenominationAndTypeFromLabel(topCategory.label)
-                        if (parsed != null) {
-                            detectedItems.add(parsed)
-                        }
+                val yoloBoxes = runYoloInference(bitmap)
+                if (yoloBoxes.isNotEmpty()) {
+                    val detectedItems = yoloBoxes.mapNotNull { box -> classIndexToItem[box.classIndex] }
+                    if (detectedItems.isNotEmpty()) {
+                        val maxConfidence = yoloBoxes.maxOf { it.confidence }
+                        val result = buildMultiItemResult(detectedItems, maxConfidence, "YOLO Multi-Box Model")
+                        imageProxy.close()
+                        onResult(result)
+                        return
                     }
                 }
-
-                if (detectedItems.isNotEmpty()) {
-                    val result = buildMultiItemResult(detectedItems, 0.90f, "TFLite Custom Model")
-                    imageProxy.close()
-                    onResult(result)
-                    return
-                }
             } catch (e: Exception) {
-                Log.e(tag, "TFLite inference error", e)
+                Log.e(tag, "YOLO TFLite inference error", e)
             }
         }
 
-        // 2. ML Kit Multi-Item Pattern Engine (Detects multiple side-by-side notes and coins in frame)
+        // 2. Spatial TextBlock ML Kit OCR Engine (Analyzes distinct spatial regions across the frame for 1..10+ items)
         val inputImage = InputImage.fromMediaImage(mediaImage, rotationDegrees)
         textRecognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
-                val detectedList = detectMultiRupeeDenominationsFromText(visionText.text)
+                val detectedList = mutableListOf<Pair<Int, Boolean>>()
+
+                // Analyze each spatial TextBlock individually to detect multiple notes/coins in different positions
+                for (block in visionText.textBlocks) {
+                    val blockText = block.text
+                    val item = parseDenominationFromTextBlock(blockText)
+                    if (item != null) {
+                        detectedList.add(item)
+                    }
+                }
+
+                // If block iteration didn't catch, fallback to full text pattern analysis
+                if (detectedList.isEmpty()) {
+                    val fallbackList = parseDenominationsFromFullText(visionText.text)
+                    detectedList.addAll(fallbackList)
+                }
 
                 if (detectedList.isNotEmpty()) {
-                    val result = buildMultiItemResult(detectedList, 0.88f, "Multi-Item Pattern Engine")
+                    val result = buildMultiItemResult(detectedList, 0.88f, "Spatial OCR Block Engine")
                     onResult(result)
                 } else {
                     onResult(null)
@@ -154,71 +201,109 @@ class IndianCurrencyDetector(private val context: Context) {
     }
 
     /**
-     * Extracts ALL distinct Rupee banknote and coin denominations present side-by-side in the frame.
+     * Parses banknote or coin denomination from an individual spatial TextBlock in the camera frame.
      */
-    private fun detectMultiRupeeDenominationsFromText(rawText: String): List<Pair<Int, Boolean>> {
-        if (rawText.isBlank()) return emptyList()
+    private fun parseDenominationFromTextBlock(blockText: String): Pair<Int, Boolean>? {
+        if (blockText.isBlank()) return null
+        val cleanText = blockText.uppercase(Locale.ROOT).replace("₹", " ").replace("RS", " ")
 
-        val cleanText = rawText.uppercase(Locale.ROOT)
-            .replace("₹", " ")
-            .replace("RS", " ")
-            .replace(".", " ")
-
-        val hasRbiMarker = cleanText.contains("RESERVE") ||
-                cleanText.contains("BANK") ||
-                cleanText.contains("INDIA") ||
-                cleanText.contains("REZERVE") ||
-                cleanText.contains("BHARAT") ||
-                cleanText.contains("RUPEES") ||
-                cleanText.contains("GUARANTEED")
+        val hasRbiMarker = cleanText.contains("RESERVE") || cleanText.contains("BANK") ||
+                cleanText.contains("INDIA") || cleanText.contains("BHARAT") ||
+                cleanText.contains("RUPEES") || cleanText.contains("GUARANTEED")
 
         val isCoinMarker = cleanText.contains("COIN") || cleanText.contains("SATYAMEVA") || cleanText.contains("JAYATE")
 
         val tokens = cleanText.split(Regex("\\s+"))
-        val detected = mutableListOf<Pair<Int, Boolean>>()
 
-        // Scan for Banknote Denominations (500, 200, 100, 50, 20, 10)
-        val validNoteDenoms = listOf(500, 200, 100, 50, 20, 10)
-        for (denom in validNoteDenoms) {
+        // Check Banknotes (500, 200, 100, 50, 20, 10)
+        for (denom in listOf(500, 200, 100, 50, 20, 10)) {
             val denomStr = denom.toString()
             if (tokens.contains(denomStr)) {
-                // Must have RBI marker or official banknote text keyword to prevent random number matching
                 if (hasRbiMarker || cleanText.contains("PROMISE") || cleanText.contains("GOVERNOR") || cleanText.contains("CENTRAL")) {
-                    detected.add(Pair(denom, false)) // Banknote
+                    return Pair(denom, false) // Banknote
                 }
             }
         }
 
-        // Scan for Coin Denominations (20, 10, 5, 2, 1)
-        val validCoinDenoms = listOf(20, 10, 5, 2, 1)
-        for (denom in validCoinDenoms) {
+        // Check Coins (20, 10, 5, 2, 1)
+        for (denom in listOf(20, 10, 5, 2, 1)) {
             val denomStr = denom.toString()
             if (tokens.contains(denomStr)) {
-                // Add coin only if explicit coin/national marker present
-                if (isCoinMarker || cleanText.contains("SATYAMEVA") || cleanText.contains("JAYATE")) {
-                    val alreadyAddedAsNote = detected.any { it.first == denom && !it.second }
-                    if (!alreadyAddedAsNote) {
-                        detected.add(Pair(denom, true)) // Coin
+                if (isCoinMarker || cleanText.contains("SATYAMEVA") || cleanText.contains("JAYATE") || cleanText.contains("INDIA")) {
+                    return Pair(denom, true) // Coin
+                }
+            }
+        }
+
+        return null
+    }
+
+    private fun parseDenominationsFromFullText(fullText: String): List<Pair<Int, Boolean>> {
+        if (fullText.isBlank()) return emptyList()
+        val cleanText = fullText.uppercase(Locale.ROOT).replace("₹", " ").replace("RS", " ")
+        val hasRbiMarker = cleanText.contains("RESERVE") || cleanText.contains("BANK") || cleanText.contains("INDIA") || cleanText.contains("BHARAT") || cleanText.contains("RUPEES")
+        val tokens = cleanText.split(Regex("\\s+"))
+
+        val detected = mutableListOf<Pair<Int, Boolean>>()
+        for (denom in listOf(500, 200, 100, 50, 20, 10)) {
+            if (tokens.contains(denom.toString()) && hasRbiMarker) {
+                detected.add(Pair(denom, false))
+            }
+        }
+        return detected
+    }
+
+    /**
+     * Runs YOLO TFLite multi-box object detection inference.
+     */
+    private fun runYoloInference(bitmap: Bitmap): List<YoloBox> {
+        val interp = interpreter ?: return emptyList()
+        val resized = Bitmap.createScaledBitmap(bitmap, yoloInputSize, yoloInputSize, true)
+        val intValues = IntArray(yoloInputSize * yoloInputSize)
+        resized.getPixels(intValues, 0, yoloInputSize, 0, 0, yoloInputSize, yoloInputSize)
+
+        val inputBuffer = ByteBuffer.allocateDirect(1 * yoloInputSize * yoloInputSize * 3 * 4)
+            .apply { order(ByteOrder.nativeOrder()) }
+
+        for (pixelValue in intValues) {
+            inputBuffer.putFloat(((pixelValue shr 16) and 0xFF) / 255.0f)
+            inputBuffer.putFloat(((pixelValue shr 8) and 0xFF) / 255.0f)
+            inputBuffer.putFloat((pixelValue and 0xFF) / 255.0f)
+        }
+        inputBuffer.rewind()
+
+        val numAnchors = 8400
+        val numClasses = 11
+        val outputBuffer = Array(1) { Array(4 + numClasses) { FloatArray(numAnchors) } }
+
+        return try {
+            interp.run(inputBuffer, outputBuffer)
+            val raw = outputBuffer[0]
+            val candidates = mutableListOf<YoloBox>()
+
+            for (anchor in 0 until numAnchors) {
+                var bestScore = 0f
+                var bestClass = -1
+                for (c in 0 until numClasses) {
+                    val score = raw[4 + c][anchor]
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestClass = c
                     }
                 }
+                if (bestScore >= confidenceThreshold && bestClass >= 0) {
+                    val cx = raw[0][anchor]
+                    val cy = raw[1][anchor]
+                    val w = raw[2][anchor]
+                    val h = raw[3][anchor]
+                    candidates.add(YoloBox(bestClass, bestScore, cx, cy, w, h))
+                }
             }
+            candidates.sortedByDescending { it.confidence }.take(10) // Up to 10 items
+        } catch (e: Exception) {
+            Log.e(tag, "YOLO inference failed", e)
+            emptyList()
         }
-
-        return detected.distinct()
-    }
-
-    private fun countOccurrences(text: String, sub: String): Int {
-        return text.split(sub).size - 1
-    }
-
-    private fun parseDenominationAndTypeFromLabel(label: String): Pair<Int, Boolean>? {
-        val lower = label.lowercase(Locale.ROOT)
-        val isCoin = lower.contains("coin")
-        val digits = label.replace(Regex("[^0-9]"), "")
-        val denom = digits.toIntOrNull() ?: return null
-
-        val validDenoms = listOf(1, 2, 5, 10, 20, 50, 100, 200, 500)
-        return if (denom in validDenoms) Pair(denom, isCoin) else null
     }
 
     private fun buildMultiItemResult(
@@ -243,7 +328,7 @@ class IndianCurrencyDetector(private val context: Context) {
             )
         }
 
-        // Multiple items side-by-side
+        // Multiple items (1 to 10+ items detected side-by-side or spread out)
         val totalSum = items.sumOf { it.first }
         val notes = items.filter { !it.second }
         val coins = items.filter { it.second }
@@ -288,8 +373,8 @@ class IndianCurrencyDetector(private val context: Context) {
 
     fun close() {
         try {
-            tfliteClassifier?.close()
-            tfliteClassifier = null
+            interpreter?.close()
+            interpreter = null
             textRecognizer.close()
         } catch (e: Exception) {
             Log.e(tag, "Error closing currency detector", e)
