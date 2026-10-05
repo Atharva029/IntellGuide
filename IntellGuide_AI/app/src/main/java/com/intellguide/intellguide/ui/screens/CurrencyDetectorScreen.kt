@@ -50,10 +50,8 @@ fun CurrencyDetectorScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var currentResult by remember { mutableStateOf<CurrencyDetectionResult?>(null) }
-    var lastSpokenLabel by remember { mutableStateOf("") }
-
-    var consecutiveFrameResult by remember { mutableStateOf<CurrencyDetectionResult?>(null) }
-    var consecutiveCount by remember { mutableIntStateOf(0) }
+    var lastAlertTime by remember { mutableLongStateOf(0L) }
+    var lastAlertDenomination by remember { mutableIntStateOf(0) }
 
     val currencyDetector = remember { IndianCurrencyDetector(context) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
@@ -102,7 +100,7 @@ fun CurrencyDetectorScreen(
                 IconButton(
                     onClick = {
                         val alertMsg = currentResult?.spokenAlert
-                            ?: "Hold an Indian Rupee note or coin inside the camera frame."
+                            ?: "Hold an Indian Rupee note inside the camera frame."
                         viewModel.speakFeedback(alertMsg)
                     }
                 ) {
@@ -181,30 +179,33 @@ fun CurrencyDetectorScreen(
                                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                 .build()
 
+                            var consecutiveMatches = 0
+                            var candidateDenom = 0
+
                             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                                 val rotation = imageProxy.imageInfo.rotationDegrees
                                 currencyDetector.processFrame(imageProxy, rotation) { result ->
                                     if (result != null) {
-                                        // 4-Frame Stability Consensus Buffer
-                                        if (consecutiveFrameResult?.label == result.label) {
-                                            consecutiveCount++
+                                        if (result.denomination == candidateDenom) {
+                                            consecutiveMatches++
                                         } else {
-                                            consecutiveFrameResult = result
-                                            consecutiveCount = 1
+                                            candidateDenom = result.denomination
+                                            consecutiveMatches = 1
                                         }
 
-                                        // Update UI & speak immediately when stable for 2 frames
-                                        if (consecutiveCount >= 2) {
+                                        // Only lock in and speak when result is stable across 3 consecutive frames
+                                        if (consecutiveMatches >= 2) {
                                             currentResult = result
+                                            val now = System.currentTimeMillis()
 
-                                            // Speak immediately whenever denomination/label changes
-                                            if (result.label != lastSpokenLabel) {
-                                                lastSpokenLabel = result.label
+                                            if (result.denomination != lastAlertDenomination || (now - lastAlertTime) > 4500) {
+                                                lastAlertTime = now
+                                                lastAlertDenomination = result.denomination
                                                 viewModel.speakFeedback(result.spokenAlert)
                                             }
                                         }
                                     } else {
-                                        consecutiveCount = 0
+                                        consecutiveMatches = 0
                                     }
                                 }
                             }
