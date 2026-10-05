@@ -214,19 +214,19 @@ fun CurrencyDetectorScreen(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Rectangular Banknote Focus Target Box (Enlarged Frame for Easy Alignment)
+                // Rectangular Banknote Focus Target Box (Maximally Enlarged Frame)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(340.dp)
+                            .height(450.dp)
                             .border(
-                                width = 3.5.dp,
+                                width = 4.dp,
                                 color = if (currentResult != null) Color(0xFF10B981) else Color(0xFFF59E0B),
                                 shape = RoundedCornerShape(24.dp)
                             )
