@@ -50,8 +50,7 @@ fun CurrencyDetectorScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var currentResult by remember { mutableStateOf<CurrencyDetectionResult?>(null) }
-    var lastAlertTime by remember { mutableLongStateOf(0L) }
-    var lastAlertDenomination by remember { mutableIntStateOf(0) }
+    var lastSpokenLabel by remember { mutableStateOf("") }
 
     var consecutiveFrameResult by remember { mutableStateOf<CurrencyDetectionResult?>(null) }
     var consecutiveCount by remember { mutableIntStateOf(0) }
@@ -194,15 +193,13 @@ fun CurrencyDetectorScreen(
                                             consecutiveCount = 1
                                         }
 
-                                        // Update UI when stable for 3 frames
-                                        if (consecutiveCount >= 3) {
+                                        // Update UI & speak immediately when stable for 2 frames
+                                        if (consecutiveCount >= 2) {
                                             currentResult = result
-                                            val now = System.currentTimeMillis()
 
-                                            // Speak ONLY if 6 seconds elapsed or new stable denomination detected
-                                            if ((now - lastAlertTime) > 6000 || (result.denomination != lastAlertDenomination && consecutiveCount == 3)) {
-                                                lastAlertTime = now
-                                                lastAlertDenomination = result.denomination
+                                            // Speak immediately whenever denomination/label changes
+                                            if (result.label != lastSpokenLabel) {
+                                                lastSpokenLabel = result.label
                                                 viewModel.speakFeedback(result.spokenAlert)
                                             }
                                         }
