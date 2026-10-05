@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +51,7 @@ fun CurrencyDetectorScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var currentResult by remember { mutableStateOf<CurrencyDetectionResult?>(null) }
+    var isAutoSpeechEnabled by remember { mutableStateOf(false) } // Off by default to avoid annoying speech spam
     var lastAlertTime by remember { mutableLongStateOf(0L) }
     var lastAlertDenomination by remember { mutableIntStateOf(0) }
 
@@ -97,18 +99,35 @@ fun CurrencyDetectorScreen(
                     )
                 }
 
-                IconButton(
-                    onClick = {
-                        val alertMsg = currentResult?.spokenAlert
-                            ?: "Hold an Indian Rupee note inside the camera frame."
-                        viewModel.speakFeedback(alertMsg)
+                // Toggle Auto-Speech ON / OFF Button
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = {
+                            isAutoSpeechEnabled = !isAutoSpeechEnabled
+                            val status = if (isAutoSpeechEnabled) "Auto voice announcements enabled." else "Auto voice announcements muted. Tap card to hear result."
+                            viewModel.speakFeedback(status)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isAutoSpeechEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                            contentDescription = "Toggle Auto Voice Speech",
+                            tint = if (isAutoSpeechEnabled) Color(0xFF10B981) else TextMuted
+                        )
                     }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.VolumeUp,
-                        contentDescription = "Read Result Aloud",
-                        tint = Color(0xFFF59E0B)
-                    )
+
+                    IconButton(
+                        onClick = {
+                            val alertMsg = currentResult?.spokenAlert
+                                ?: "Hold an Indian Rupee note or coin in camera view."
+                            viewModel.speakFeedback(alertMsg)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = "Read Result Aloud",
+                            tint = Color(0xFFF59E0B)
+                        )
+                    }
                 }
             }
         },
@@ -142,7 +161,7 @@ fun CurrencyDetectorScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "IntellGuide needs camera access to identify Indian Rupee banknotes in real time.",
+                        text = "IntellGuide needs camera access to identify Indian Rupee banknotes & coins.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextMuted,
                         textAlign = TextAlign.Center
@@ -193,12 +212,13 @@ fun CurrencyDetectorScreen(
                                             consecutiveMatches = 1
                                         }
 
-                                        // Only lock in and speak when result is stable across 3 consecutive frames
-                                        if (consecutiveMatches >= 2) {
+                                        // Require 3 consecutive matching frames before locking result
+                                        if (consecutiveMatches >= 3) {
                                             currentResult = result
                                             val now = System.currentTimeMillis()
 
-                                            if (result.denomination != lastAlertDenomination || (now - lastAlertTime) > 4500) {
+                                            // Only trigger automatic speech if Auto-Speech is enabled by user
+                                            if (isAutoSpeechEnabled && (result.denomination != lastAlertDenomination || (now - lastAlertTime) > 6000)) {
                                                 lastAlertTime = now
                                                 lastAlertDenomination = result.denomination
                                                 viewModel.speakFeedback(result.spokenAlert)
@@ -228,7 +248,7 @@ fun CurrencyDetectorScreen(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Rectangular Banknote Focus Target Box (Maximally Enlarged Frame)
+                // Rectangular Target Framing Box
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -253,7 +273,7 @@ fun CurrencyDetectorScreen(
                     )
                 }
 
-                // Top Guidance Pill
+                // Top Guidance Banner & Auto-Voice Status Indicator
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -262,7 +282,7 @@ fun CurrencyDetectorScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Surface(
-                        color = Color.Black.copy(alpha = 0.75f),
+                        color = Color.Black.copy(alpha = 0.80f),
                         shape = RoundedCornerShape(30.dp),
                         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
                     ) {
@@ -271,14 +291,14 @@ fun CurrencyDetectorScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Info,
+                                imageVector = if (isAutoSpeechEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
                                 contentDescription = null,
-                                tint = Color(0xFFF59E0B),
+                                tint = if (isAutoSpeechEnabled) Color(0xFF10B981) else Color(0xFFF59E0B),
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Hold note inside frame under good lighting",
+                                text = if (isAutoSpeechEnabled) "Auto Voice: ON • Tap card to re-read" else "Auto Voice: OFF • Tap card or mic to speak",
                                 color = TextWhite,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -286,7 +306,7 @@ fun CurrencyDetectorScreen(
                     }
                 }
 
-                // Bottom Result Panel & Controls
+                // Bottom Result Panel & Interactive Controls
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -304,6 +324,7 @@ fun CurrencyDetectorScreen(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { viewModel.speakFeedback(res.spokenAlert) }
                                     .border(1.dp, Color(0xFF10B981), RoundedCornerShape(16.dp)),
                                 colors = CardDefaults.cardColors(containerColor = SurfaceDark)
                             ) {
@@ -321,7 +342,7 @@ fun CurrencyDetectorScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = "₹${res.denomination}",
+                                                text = if (res.isCoin) "🪙" else "₹${res.denomination}",
                                                 color = Color(0xFF10B981),
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 16.sp
@@ -338,7 +359,7 @@ fun CurrencyDetectorScreen(
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                text = "${res.colorSignature} • ${res.detectionSource}",
+                                                text = "${res.colorSignature} • Tap to hear",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = TextMuted
                                             )
@@ -350,7 +371,7 @@ fun CurrencyDetectorScreen(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.VolumeUp,
-                                            contentDescription = "Speak",
+                                            contentDescription = "Speak Result",
                                             tint = Color(0xFF10B981)
                                         )
                                     }
@@ -361,7 +382,7 @@ fun CurrencyDetectorScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Supported Denomination Badges (Coins & Banknotes)
+                    // Supported Denomination Badges
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
@@ -374,7 +395,7 @@ fun CurrencyDetectorScreen(
                             ) {
                                 Text(
                                     text = item,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextWhite
                                 )
@@ -384,10 +405,12 @@ fun CurrencyDetectorScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Voice Command & Action Trigger Button
+                    // Action Button (Speak Result / Voice Input)
                     Button(
                         onClick = {
-                            if (!hasMicPermission) {
+                            if (currentResult != null) {
+                                viewModel.speakFeedback(currentResult!!.spokenAlert)
+                            } else if (!hasMicPermission) {
                                 onRequestMicPermission()
                             } else {
                                 viewModel.onMicButtonClicked()
@@ -400,17 +423,17 @@ fun CurrencyDetectorScreen(
                             .height(52.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Mic,
+                            imageVector = if (currentResult != null) Icons.Default.VolumeUp else Icons.Default.Mic,
                             contentDescription = null,
                             tint = Color.Black,
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Tap or Say 'Identify Currency'",
+                            text = if (currentResult != null) "Tap to Speak Result: ${currentResult!!.label}" else "Tap or Say 'Identify Currency'",
                             color = Color.Black,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 15.sp
                         )
                     }
                 }
