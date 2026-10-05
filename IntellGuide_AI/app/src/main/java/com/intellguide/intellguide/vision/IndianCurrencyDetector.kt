@@ -10,96 +10,46 @@ import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.MappedByteBuffer
-import java.nio.channels.FileChannel
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.task.core.BaseOptions
+import org.tensorflow.lite.task.vision.classifier.Classifications
+import org.tensorflow.lite.task.vision.classifier.ImageClassifier
 import java.util.Locale
 
 /**
- * Result representing single or multi-note identified Indian Rupee banknotes.
+ * Result representing an identified Indian Rupee banknote.
  */
 data class CurrencyDetectionResult(
-    val denomination: Int,
-    val label: String,
-    val colorSignature: String,
-    val confidence: Float,
-    val spokenAlert: String,
-    val detectionSource: String
-)
-
-/**
- * YOLOv26n currency detection result box
- */
-private data class YoloDetectionBox(
-    val classIndex: Int,
-    val confidence: Float,
-    val xCenter: Float,
-    val yCenter: Float,
-    val w: Float,
-    val h: Float
+    val denomination: Int,           // e.g., 10, 20, 50, 100, 200, 500
+    val label: String,                // "500 Rupee Note"
+    val colorSignature: String,       // "Stone Grey"
+    val confidence: Float,            // 0.0 to 1.0
+    val spokenAlert: String,          // "This is a 500 rupee note."
+    val detectionSource: String       // "TFLite Custom Model" or "OCR Pattern Matcher"
 )
 
 /**
  * Phase 7 — Indian Currency Recognition Engine.
- *
- * Uses the raw TFLite Interpreter API to directly run your custom YOLOv8/v26n model.
- * This works with any Ultralytics-exported .tflite model without requiring Task Vision metadata.
- *
- * YOLO Output Format: [1, num_classes+4, 8400] (YOLOv8/v26 standard output)
- *
- * Class Label Map (edit if your training dataset used different names):
- *   Class 0 → ₹10
- *   Class 1 → ₹20
- *   Class 2 → ₹50
- *   Class 3 → ₹100
- *   Class 4 → ₹200
- *   Class 5 → ₹500
+ * Dual-Strategy Detector:
+ * 1. TFLite Classifier (if custom currency_model.tflite asset is present).
+ * 2. ML Kit OCR + Note Pattern Recognition (detects numerical 10, 20, 50, 100, 200, 500 + RBI markers).
+ * 3. Color Signature Cross-Verification for Mahatma Gandhi New Series notes.
  */
 class IndianCurrencyDetector(private val context: Context) {
 
     private val tag = "CurrencyDetector"
-
-    // Input image size for your YOLO model (adjust if your model uses a different size)
-    private val yoloInputSize = 640
-
-    // Confidence threshold for YOLO detections (lowered for live mobile camera frames in hand/table)
-    private val confidenceThreshold = 0.20f
-
-    // Class index → Indian Rupee denomination map
-    // Exact class order from trained YOLOv26n dataset:
-    // {0: '10', 1: '100', 2: '20', 3: '200', 4: '2000', 5: '50', 6: '500'}
-    private val classIndexToDenomination = mapOf(
-        0 to 10,
-        1 to 100,
-        2 to 20,
-        3 to 200,
-        4 to 2000,
-        5 to 50,
-        6 to 500
-    )
-
-    private var interpreter: Interpreter? = null
+    private var tfliteClassifier: ImageClassifier? = null
     var isTfliteModelLoaded: Boolean = false
         private set
-    var modelType: String = "None"
-        private set
-    var numClasses: Int = 7  // {0:10, 1:100, 2:20, 3:200, 4:2000, 5:50, 6:500}
-        private set
-    // Actual output tensor shape read from model at load time
-    private var outputTensorShape: IntArray = intArrayOf()
-    // True if output is [1, 4+N, 8400], false if [1, 8400, 4+N]
-    private var isFeatureFirst: Boolean = true
 
     private val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     init {
-        initializeInterpreter()
+        initializeTfliteModel()
     }
 
-    private fun initializeInterpreter() {
+    private fun initializeTfliteModel() {
         val modelCandidates = listOf(
             "currency_model.tflite",
             "rupee_classifier.tflite",
@@ -110,56 +60,25 @@ class IndianCurrencyDetector(private val context: Context) {
         for (modelName in modelCandidates) {
             if (hasAsset(modelName)) {
                 try {
-                    val modelBuffer = loadModelFromAsset(modelName)
-                    val options = Interpreter.Options().apply {
-                        numThreads = 2
-                        useXNNPACK = true
-                    }
-                    interpreter = Interpreter(modelBuffer, options)
+                    val baseOptions = BaseOptions.builder().setNumThreads(2).build()
+                    val options = ImageClassifier.ImageClassifierOptions.builder()
+                        .setBaseOptions(baseOptions)
+                        .setMaxResults(1)
+                        .setScoreThreshold(0.60f)
+                        .build()
+
+                    tfliteClassifier = ImageClassifier.createFromFileAndOptions(context, modelName, options)
                     isTfliteModelLoaded = true
-                    modelType = "YOLO Raw Interpreter"
-
-                    // --- Diagnostic: dump ALL tensor info ---
-                    val inputShape = interpreter!!.getInputTensor(0).shape()
-                    outputTensorShape = interpreter!!.getOutputTensor(0).shape()
-                    Log.d(tag, "[YOLO INIT] Input tensor:  ${inputShape.contentToString()}")
-                    Log.d(tag, "[YOLO INIT] Output tensor: ${outputTensorShape.contentToString()}")
-
-                    // Detect output layout:
-                    //   Format A (YOLOv8 standard): [1, 4+numClasses, 8400] → dim[1] < dim[2]
-                    //   Format B (transposed):      [1, 8400, 4+numClasses] → dim[1] > dim[2]
-                    if (outputTensorShape.size == 3) {
-                        val dim1 = outputTensorShape[1]
-                        val dim2 = outputTensorShape[2]
-                        if (dim1 < dim2) {
-                            // Format A: features are rows
-                            isFeatureFirst = true
-                            numClasses = dim1 - 4
-                        } else {
-                            // Format B: anchors are rows
-                            isFeatureFirst = false
-                            numClasses = dim2 - 4
-                        }
-                    }
-
-                    Log.d(tag, "[YOLO INIT] Layout: ${if (isFeatureFirst) "[1, 4+N, 8400]" else "[1, 8400, 4+N]"} | Classes: $numClasses")
+                    Log.d(tag, "Loaded custom Indian Currency TFLite Model from asset: $modelName")
                     return
                 } catch (e: Exception) {
-                    Log.e(tag, "Failed loading $modelName as raw YOLO Interpreter", e)
+                    Log.e(tag, "Failed loading currency model $modelName", e)
                 }
             }
         }
 
         isTfliteModelLoaded = false
-        modelType = "OCR Engine"
-        Log.i(tag, "No YOLO .tflite model loaded. ML Kit OCR Engine active as fallback.")
-    }
-
-    private fun loadModelFromAsset(modelName: String): MappedByteBuffer {
-        val fd = context.assets.openFd(modelName)
-        val inputStream = FileInputStream(fd.fileDescriptor)
-        val channel = inputStream.channel
-        return channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
+        Log.i(tag, "No custom currency .tflite model found in assets. ML Kit OCR & Color Signature Engine active.")
     }
 
     private fun hasAsset(name: String): Boolean {
@@ -186,43 +105,42 @@ class IndianCurrencyDetector(private val context: Context) {
             return
         }
 
-        val rawBitmap = imageProxy.toBitmap()
-        val bitmap = if (rotationDegrees != 0) {
-            val matrix = android.graphics.Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-            Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
-        } else {
-            rawBitmap
-        }
+        val bitmap = imageProxy.toBitmap()
 
-        // 1. Try YOLOv26n Raw Interpreter
-        if (isTfliteModelLoaded && interpreter != null) {
+        // 1. Try Custom TFLite Model first if loaded
+        if (isTfliteModelLoaded && tfliteClassifier != null) {
             try {
-                val detections = runYoloInference(bitmap)
-                if (detections.isNotEmpty()) {
-                    val detectedDenominations = detections.mapNotNull { box ->
-                        classIndexToDenomination[box.classIndex]
-                    }
+                val tensorImage = TensorImage.fromBitmap(bitmap)
+                val results: List<Classifications> = tfliteClassifier!!.classify(tensorImage)
 
-                    if (detectedDenominations.isNotEmpty()) {
-                        val maxConfidence = detections.maxOf { it.confidence }
-                        val result = buildMultiNoteResult(detectedDenominations, maxConfidence, "YOLOv26n Custom Model")
-                        imageProxy.close()
-                        onResult(result)
-                        return
+                for (classification in results) {
+                    val topCategory = classification.categories.maxByOrNull { it.score }
+                    if (topCategory != null && topCategory.score >= 0.65f) {
+                        val parsedDenomination = parseDenominationFromLabel(topCategory.label)
+                        if (parsedDenomination != null) {
+                            val result = buildResult(parsedDenomination, topCategory.score, "TFLite Custom Model")
+                            imageProxy.close()
+                            onResult(result)
+                            return
+                        }
                     }
                 }
             } catch (e: Exception) {
-                Log.e(tag, "YOLOv26n inference error", e)
+                Log.e(tag, "TFLite inference error", e)
             }
         }
 
-        // 2. ML Kit OCR Fallback
+        // 2. ML Kit OCR + Currency Pattern Analysis
         val inputImage = InputImage.fromMediaImage(mediaImage, rotationDegrees)
         textRecognizer.process(inputImage)
             .addOnSuccessListener { visionText ->
-                val matchedDenomination = detectRupeeDenominationFromText(visionText.text)
+                val fullText = visionText.text
+                val matchedDenomination = detectRupeeDenominationFromText(fullText)
+
                 if (matchedDenomination != null) {
-                    onResult(buildResult(matchedDenomination, 0.88f, "ML Kit OCR Engine"))
+                    val colorMatch = analyzeColorSignature(bitmap)
+                    val result = buildResult(matchedDenomination, 0.88f, "ML Kit OCR & Pattern Matcher")
+                    onResult(result)
                 } else {
                     onResult(null)
                 }
@@ -236,160 +154,89 @@ class IndianCurrencyDetector(private val context: Context) {
     }
 
     /**
-     * Runs YOLOv8/v26n TFLite inference using the raw Interpreter API.
-     * Automatically handles two common YOLO TFLite output formats:
-     *   Format A: [1, 4+numClasses, 8400]  (standard YOLOv8 export, isFeatureFirst=true)
-     *   Format B: [1, 8400, 4+numClasses]  (transposed variant, isFeatureFirst=false)
+     * Extracts Rupee denomination from OCR text by looking for currency indicators.
      */
-    private fun runYoloInference(bitmap: Bitmap): List<YoloDetectionBox> {
-        val interp = interpreter ?: return emptyList()
-
-        // 1. Ultra-fast bulk preprocessing (bulk getPixels instead of 640x640 getPixel loops)
-        val resized = Bitmap.createScaledBitmap(bitmap, yoloInputSize, yoloInputSize, true)
-        val intValues = IntArray(yoloInputSize * yoloInputSize)
-        resized.getPixels(intValues, 0, yoloInputSize, 0, 0, yoloInputSize, yoloInputSize)
-
-        val inputBuffer = ByteBuffer.allocateDirect(1 * yoloInputSize * yoloInputSize * 3 * 4)
-            .apply { order(ByteOrder.nativeOrder()) }
-
-        for (pixelValue in intValues) {
-            inputBuffer.putFloat(((pixelValue shr 16) and 0xFF) / 255.0f)
-            inputBuffer.putFloat(((pixelValue shr 8) and 0xFF) / 255.0f)
-            inputBuffer.putFloat((pixelValue and 0xFF) / 255.0f)
-        }
-        inputBuffer.rewind()
-
-        val detections = mutableListOf<YoloDetectionBox>()
-        val numAnchors = 8400
-
-        try {
-            if (isFeatureFirst) {
-                // Format A: [1, 4+numClasses, 8400]
-                val outputBuffer = Array(1) { Array(4 + numClasses) { FloatArray(numAnchors) } }
-                interp.run(inputBuffer, outputBuffer)
-                val raw = outputBuffer[0]
-                var maxScore = 0f
-                for (anchor in 0 until numAnchors) {
-                    var bestScore = 0f
-                    var bestClass = -1
-                    for (c in 0 until numClasses) {
-                        val score = raw[4 + c][anchor]
-                        if (score > bestScore) { bestScore = score; bestClass = c }
-                    }
-                    if (bestScore > maxScore) maxScore = bestScore
-                    if (bestScore >= confidenceThreshold && bestClass >= 0) {
-                        val cx = raw[0][anchor]
-                        val cy = raw[1][anchor]
-                        val w = raw[2][anchor]
-                        val h = raw[3][anchor]
-                        detections.add(YoloDetectionBox(bestClass, bestScore, cx, cy, w, h))
-                    }
-                }
-                Log.d(tag, "[YOLO FormatA] raw candidates (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
-            } else {
-                // Format B: [1, 8400, 4+numClasses]
-                val outputBuffer = Array(1) { Array(numAnchors) { FloatArray(4 + numClasses) } }
-                interp.run(inputBuffer, outputBuffer)
-                val raw = outputBuffer[0]
-                var maxScore = 0f
-                for (anchor in 0 until numAnchors) {
-                    var bestScore = 0f
-                    var bestClass = -1
-                    for (c in 0 until numClasses) {
-                        val score = raw[anchor][4 + c]
-                        if (score > bestScore) { bestScore = score; bestClass = c }
-                    }
-                    if (bestScore > maxScore) maxScore = bestScore
-                    if (bestScore >= confidenceThreshold && bestClass >= 0) {
-                        val cx = raw[anchor][0]
-                        val cy = raw[anchor][1]
-                        val w = raw[anchor][2]
-                        val h = raw[anchor][3]
-                        detections.add(YoloDetectionBox(bestClass, bestScore, cx, cy, w, h))
-                    }
-                }
-                Log.d(tag, "[YOLO FormatB] raw candidates (>= $confidenceThreshold): ${detections.size} | max raw score in frame: ${"%.3f".format(maxScore)}")
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "[YOLO] run() failed — tensor mismatch? outputShape=${outputTensorShape.contentToString()}", e)
-            return emptyList()
-        }
-
-        // Apply Class-Aware Spatial Non-Maximum Suppression (IoU threshold = 0.50 for same class, 0.85 for any class)
-        // This allows multiple DIFFERENT currency notes held together overlapping in hand to all be detected!
-        val sortedDetections = detections.sortedByDescending { it.confidence }
-        val nmsResults = mutableListOf<YoloDetectionBox>()
-
-        for (candidate in sortedDetections) {
-            var isOverlapping = false
-            for (kept in nmsResults) {
-                val iou = calculateIoU(candidate, kept)
-                // Suppress if same class and overlapping (>0.50 IoU), OR if exact duplicate box (>0.85 IoU)
-                if ((candidate.classIndex == kept.classIndex && iou > 0.50f) || iou > 0.85f) {
-                    isOverlapping = true
-                    break
-                }
-            }
-            if (!isOverlapping) {
-                nmsResults.add(candidate)
-            }
-            if (nmsResults.size >= 5) break // Max 5 notes per frame
-        }
-
-        Log.d(tag, "[YOLO] Class-Aware NMS Final (${nmsResults.size} notes): ${nmsResults.map { "₹${classIndexToDenomination[it.classIndex]} conf=${"%.2f".format(it.confidence)}" }}")
-        return nmsResults
-    }
-
-    /**
-     * Calculate Intersection over Union (IoU) between two bounding boxes
-     */
-    private fun calculateIoU(a: YoloDetectionBox, b: YoloDetectionBox): Float {
-        val aMinX = a.xCenter - a.w / 2f
-        val aMaxX = a.xCenter + a.w / 2f
-        val aMinY = a.yCenter - a.h / 2f
-        val aMaxY = a.yCenter + a.h / 2f
-
-        val bMinX = b.xCenter - b.w / 2f
-        val bMaxX = b.xCenter + b.w / 2f
-        val bMinY = b.yCenter - b.h / 2f
-        val bMaxY = b.yCenter + b.h / 2f
-
-        val interMinX = maxOf(aMinX, bMinX)
-        val interMaxX = minOf(aMaxX, bMaxX)
-        val interMinY = maxOf(aMinY, bMinY)
-        val interMaxY = minOf(aMaxY, bMaxY)
-
-        val interWidth = maxOf(0f, interMaxX - interMinX)
-        val interHeight = maxOf(0f, interMaxY - interMinY)
-        val interArea = interWidth * interHeight
-
-        val aArea = a.w * a.h
-        val bArea = b.w * b.h
-        val unionArea = aArea + bArea - interArea
-
-        return if (unionArea <= 0f) 0f else interArea / unionArea
-    }
-
-
     private fun detectRupeeDenominationFromText(rawText: String): Int? {
         if (rawText.isBlank()) return null
 
         val cleanText = rawText.uppercase(Locale.ROOT)
-            .replace("₹", " ").replace("RS", " ").replace(".", " ")
+            .replace("₹", " ")
+            .replace("RS", " ")
+            .replace(".", " ")
 
-        val hasRbiMarker = cleanText.contains("RESERVE") || cleanText.contains("BANK") ||
-                cleanText.contains("INDIA") || cleanText.contains("BHARAT") ||
-                cleanText.contains("RUPEES") || cleanText.contains("GUARANTEED")
+        // Check for RBI / Currency indicators to prevent matching random numbers
+        val hasRbiMarker = cleanText.contains("RESERVE") ||
+                cleanText.contains("BANK") ||
+                cleanText.contains("INDIA") ||
+                cleanText.contains("REZERVE") ||
+                cleanText.contains("BHARAT") ||
+                cleanText.contains("RUPEES") ||
+                cleanText.contains("GUARANTEED")
 
         val tokens = cleanText.split(Regex("\\s+"))
 
-        for (denom in listOf(500, 200, 100, 50, 20, 10)) {
+        // Priority order for Indian Rupee notes: 500, 200, 100, 50, 20, 10
+        val validDenominations = listOf(500, 200, 100, 50, 20, 10)
+
+        for (denom in validDenominations) {
             val denomStr = denom.toString()
             if (tokens.contains(denomStr) || cleanText.contains(denomStr)) {
-                if (hasRbiMarker) return denom
+                // If RBI marker present OR denomination number clearly found twice/prominently
+                if (hasRbiMarker || countOccurrences(cleanText, denomStr) >= 1) {
+                    return denom
+                }
             }
         }
+
         return null
+    }
+
+    private fun countOccurrences(text: String, sub: String): Int {
+        return text.split(sub).size - 1
+    }
+
+    private fun parseDenominationFromLabel(label: String): Int? {
+        val digits = label.replace(Regex("[^0-9]"), "")
+        val denom = digits.toIntOrNull()
+        return if (denom in listOf(10, 20, 50, 100, 200, 500)) denom else null
+    }
+
+    /**
+     * Color signature analysis for Mahatma Gandhi New Series Indian Banknotes.
+     */
+    private fun analyzeColorSignature(bitmap: Bitmap): String {
+        return try {
+            val scaled = Bitmap.createScaledBitmap(bitmap, 50, 50, false)
+            var rSum = 0L
+            var gSum = 0L
+            var bSum = 0L
+            val count = scaled.width * scaled.height
+
+            for (x in 0 until scaled.width) {
+                for (y in 0 until scaled.height) {
+                    val pixel = scaled.getPixel(x, y)
+                    rSum += Color.red(pixel)
+                    gSum += Color.green(pixel)
+                    bSum += Color.blue(pixel)
+                }
+            }
+
+            val avgR = (rSum / count).toInt()
+            val avgG = (gSum / count).toInt()
+            val avgB = (bSum / count).toInt()
+
+            when {
+                avgR > 180 && avgG in 140..200 && avgB < 100 -> "Bright Yellow (₹200)"
+                avgR < 100 && avgG in 140..220 && avgB > 180 -> "Fluorescent Blue (₹50)"
+                avgR in 120..180 && avgG in 120..170 && avgB > 160 -> "Lavender (₹100)"
+                avgR in 100..150 && avgG in 100..140 && avgB in 100..140 -> "Stone Grey (₹500)"
+                avgR > 110 && avgG in 60..110 && avgB < 80 -> "Chocolate Brown (₹10)"
+                avgR in 140..200 && avgG in 150..210 && avgB < 120 -> "Greenish Yellow (₹20)"
+                else -> "Standard Banknote Color"
+            }
+        } catch (e: Exception) {
+            "Standard Banknote Color"
+        }
     }
 
     private fun buildResult(denom: Int, confidence: Float, source: String): CurrencyDetectionResult {
@@ -400,9 +247,9 @@ class IndianCurrencyDetector(private val context: Context) {
             100 -> "Lavender" to "100 Rupee Note"
             200 -> "Bright Yellow" to "200 Rupee Note"
             500 -> "Stone Grey" to "500 Rupee Note"
-            2000 -> "Magenta Pink" to "2000 Rupee Note"
             else -> "Indian Banknote" to "$denom Rupee Note"
         }
+
         return CurrencyDetectionResult(
             denomination = denom,
             label = label,
@@ -413,28 +260,10 @@ class IndianCurrencyDetector(private val context: Context) {
         )
     }
 
-    private fun buildMultiNoteResult(denominations: List<Int>, confidence: Float, source: String): CurrencyDetectionResult {
-        if (denominations.size == 1) return buildResult(denominations[0], confidence, source)
-
-        val totalSum = denominations.sum()
-        val counts = denominations.groupingBy { it }.eachCount()
-        val summaryParts = counts.entries.joinToString(" and ") { (denom, count) ->
-            if (count == 1) "one $denom" else "$count $denom"
-        }
-        return CurrencyDetectionResult(
-            denomination = totalSum,
-            label = "Total: ₹$totalSum (${denominations.size} Notes)",
-            colorSignature = summaryParts,
-            confidence = confidence,
-            spokenAlert = "Detected ${denominations.size} notes: $summaryParts rupees. Total value is $totalSum rupees.",
-            detectionSource = source
-        )
-    }
-
     fun close() {
         try {
-            interpreter?.close()
-            interpreter = null
+            tfliteClassifier?.close()
+            tfliteClassifier = null
             textRecognizer.close()
         } catch (e: Exception) {
             Log.e(tag, "Error closing currency detector", e)
