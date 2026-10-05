@@ -347,20 +347,20 @@ fun CurrencyDetectorScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Supported Denomination Badges
+                    // Supported Denomination Badges (Coins & Banknotes)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        listOf("₹10", "₹20", "₹50", "₹100", "₹200", "₹500").forEach { denom ->
+                        listOf("🪙 ₹1", "🪙 ₹2", "🪙 ₹5", "₹10", "₹20", "₹50", "₹100", "₹200", "₹500").forEach { item ->
                             Surface(
                                 color = SurfaceDark,
                                 shape = RoundedCornerShape(20.dp),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
                             ) {
                                 Text(
-                                    text = denom,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    text = item,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextWhite
                                 )
