@@ -181,8 +181,9 @@ class IndianCurrencyDetector(private val context: Context) {
         val validNoteDenoms = listOf(500, 200, 100, 50, 20, 10)
         for (denom in validNoteDenoms) {
             val denomStr = denom.toString()
-            if (tokens.contains(denomStr) || cleanText.contains(denomStr)) {
-                if (hasRbiMarker || countOccurrences(cleanText, denomStr) >= 1) {
+            if (tokens.contains(denomStr)) {
+                // Must have RBI marker or official banknote text keyword to prevent random number matching
+                if (hasRbiMarker || cleanText.contains("PROMISE") || cleanText.contains("GOVERNOR") || cleanText.contains("CENTRAL")) {
                     detected.add(Pair(denom, false)) // Banknote
                 }
             }
@@ -192,9 +193,9 @@ class IndianCurrencyDetector(private val context: Context) {
         val validCoinDenoms = listOf(20, 10, 5, 2, 1)
         for (denom in validCoinDenoms) {
             val denomStr = denom.toString()
-            if (tokens.contains(denomStr) || cleanText.contains(denomStr)) {
-                // Add coin if coin marker or distinct coin digit pattern found
-                if (isCoinMarker || cleanText.contains("INDIA") || cleanText.contains("BHARAT")) {
+            if (tokens.contains(denomStr)) {
+                // Add coin only if explicit coin/national marker present
+                if (isCoinMarker || cleanText.contains("SATYAMEVA") || cleanText.contains("JAYATE")) {
                     val alreadyAddedAsNote = detected.any { it.first == denom && !it.second }
                     if (!alreadyAddedAsNote) {
                         detected.add(Pair(denom, true)) // Coin
