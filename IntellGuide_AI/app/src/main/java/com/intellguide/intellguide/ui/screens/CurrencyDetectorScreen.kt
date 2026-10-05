@@ -51,7 +51,7 @@ fun CurrencyDetectorScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var currentResult by remember { mutableStateOf<CurrencyDetectionResult?>(null) }
-    var isAutoSpeechEnabled by remember { mutableStateOf(false) } // Off by default to avoid annoying speech spam
+    var autoAnnounceEnabled by remember { mutableStateOf(false) }
     var lastAlertTime by remember { mutableLongStateOf(0L) }
     var lastAlertDenomination by remember { mutableIntStateOf(0) }
 
@@ -99,35 +99,22 @@ fun CurrencyDetectorScreen(
                     )
                 }
 
-                // Toggle Auto-Speech ON / OFF Button
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = {
-                            isAutoSpeechEnabled = !isAutoSpeechEnabled
-                            val status = if (isAutoSpeechEnabled) "Auto voice announcements enabled." else "Auto voice announcements muted. Tap card to hear result."
-                            viewModel.speakFeedback(status)
-                        }
-                    ) {
-                        Icon(
-                            imageVector = if (isAutoSpeechEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                            contentDescription = "Toggle Auto Voice Speech",
-                            tint = if (isAutoSpeechEnabled) Color(0xFF10B981) else TextMuted
-                        )
+                // Toggle Auto Speech Announce Mode
+                IconButton(
+                    onClick = {
+                        autoAnnounceEnabled = !autoAnnounceEnabled
+                        val stateMsg = if (autoAnnounceEnabled)
+                            "Auto voice announcements enabled."
+                        else
+                            "Auto voice announcements muted. Tap to hear result."
+                        viewModel.speakFeedback(stateMsg)
                     }
-
-                    IconButton(
-                        onClick = {
-                            val alertMsg = currentResult?.spokenAlert
-                                ?: "Hold an Indian Rupee note or coin in camera view."
-                            viewModel.speakFeedback(alertMsg)
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.VolumeUp,
-                            contentDescription = "Read Result Aloud",
-                            tint = Color(0xFFF59E0B)
-                        )
-                    }
+                ) {
+                    Icon(
+                        imageVector = if (autoAnnounceEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                        contentDescription = "Toggle Auto Announce",
+                        tint = if (autoAnnounceEnabled) Color(0xFF10B981) else TextMuted
+                    )
                 }
             }
         },
@@ -161,7 +148,7 @@ fun CurrencyDetectorScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "IntellGuide needs camera access to identify Indian Rupee banknotes & coins.",
+                        text = "IntellGuide needs camera access to identify Indian Rupee banknotes and coins in real time.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextMuted,
                         textAlign = TextAlign.Center
@@ -212,16 +199,18 @@ fun CurrencyDetectorScreen(
                                             consecutiveMatches = 1
                                         }
 
-                                        // Require 3 consecutive matching frames before locking result
-                                        if (consecutiveMatches >= 3) {
+                                        // Update UI badge when result is stable across 4 consecutive frames
+                                        if (consecutiveMatches >= 4) {
                                             currentResult = result
                                             val now = System.currentTimeMillis()
 
-                                            // Only trigger automatic speech if Auto-Speech is enabled by user
-                                            if (isAutoSpeechEnabled && (result.denomination != lastAlertDenomination || (now - lastAlertTime) > 6000)) {
-                                                lastAlertTime = now
-                                                lastAlertDenomination = result.denomination
-                                                viewModel.speakFeedback(result.spokenAlert)
+                                            // ONLY speak automatically IF Auto-Announce is enabled AND 6 seconds have passed
+                                            if (autoAnnounceEnabled) {
+                                                if (result.denomination != lastAlertDenomination && (now - lastAlertTime) > 6000) {
+                                                    lastAlertTime = now
+                                                    lastAlertDenomination = result.denomination
+                                                    viewModel.speakFeedback(result.spokenAlert)
+                                                }
                                             }
                                         }
                                     } else {
@@ -245,22 +234,28 @@ fun CurrencyDetectorScreen(
 
                         previewView
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable {
+                            val alertMsg = currentResult?.spokenAlert
+                                ?: "No currency detected yet. Hold banknote or coin inside the target frame."
+                            viewModel.speakFeedback(alertMsg)
+                        }
                 )
 
-                // Rectangular Target Framing Box
+                // Rectangular Banknote Focus Target Box
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                        .padding(horizontal = 12.dp, vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(450.dp)
+                            .height(440.dp)
                             .border(
-                                width = 4.dp,
+                                width = 3.5.dp,
                                 color = if (currentResult != null) Color(0xFF10B981) else Color(0xFFF59E0B),
                                 shape = RoundedCornerShape(24.dp)
                             )
@@ -273,7 +268,7 @@ fun CurrencyDetectorScreen(
                     )
                 }
 
-                // Top Guidance Banner & Auto-Voice Status Indicator
+                // Top Guidance Pill
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -291,14 +286,14 @@ fun CurrencyDetectorScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = if (isAutoSpeechEnabled) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                                imageVector = Icons.Default.TouchApp,
                                 contentDescription = null,
-                                tint = if (isAutoSpeechEnabled) Color(0xFF10B981) else Color(0xFFF59E0B),
+                                tint = Color(0xFFF59E0B),
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (isAutoSpeechEnabled) "Auto Voice: ON • Tap card to re-read" else "Auto Voice: OFF • Tap card or mic to speak",
+                                text = if (autoAnnounceEnabled) "Auto-Speech Active • Tap screen to repeat" else "Tap screen anytime to hear detected currency",
                                 color = TextWhite,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -306,13 +301,13 @@ fun CurrencyDetectorScreen(
                     }
                 }
 
-                // Bottom Result Panel & Interactive Controls
+                // Bottom Result Panel & Controls
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .background(Color.Black.copy(alpha = 0.85f))
-                        .padding(20.dp),
+                        .background(Color.Black.copy(alpha = 0.90f))
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     AnimatedVisibility(
@@ -325,11 +320,11 @@ fun CurrencyDetectorScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { viewModel.speakFeedback(res.spokenAlert) }
-                                    .border(1.dp, Color(0xFF10B981), RoundedCornerShape(16.dp)),
+                                    .border(1.5.dp, Color(0xFF10B981), RoundedCornerShape(16.dp)),
                                 colors = CardDefaults.cardColors(containerColor = SurfaceDark)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(16.dp),
+                                    modifier = Modifier.padding(14.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -342,10 +337,10 @@ fun CurrencyDetectorScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = if (res.isCoin) "🪙" else "₹${res.denomination}",
+                                                text = if (res.isCoin) "🪙 ₹${res.denomination}" else "₹${res.denomination}",
                                                 color = Color(0xFF10B981),
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 16.sp
+                                                fontSize = 15.sp
                                             )
                                         }
 
@@ -380,7 +375,7 @@ fun CurrencyDetectorScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Supported Denomination Badges
                     Row(
@@ -395,7 +390,7 @@ fun CurrencyDetectorScreen(
                             ) {
                                 Text(
                                     text = item,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextWhite
                                 )
@@ -403,38 +398,69 @@ fun CurrencyDetectorScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // Action Button (Speak Result / Voice Input)
-                    Button(
-                        onClick = {
-                            if (currentResult != null) {
-                                viewModel.speakFeedback(currentResult!!.spokenAlert)
-                            } else if (!hasMicPermission) {
-                                onRequestMicPermission()
-                            } else {
-                                viewModel.onMicButtonClicked()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            imageVector = if (currentResult != null) Icons.Default.VolumeUp else Icons.Default.Mic,
-                            contentDescription = null,
-                            tint = Color.Black,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (currentResult != null) "Tap to Speak Result: ${currentResult!!.label}" else "Tap or Say 'Identify Currency'",
-                            color = Color.Black,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
+                        // Speak Detected Note Button
+                        Button(
+                            onClick = {
+                                val alertMsg = currentResult?.spokenAlert
+                                    ?: "No currency detected yet. Hold banknote or coin inside the target frame."
+                                viewModel.speakFeedback(alertMsg)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.VolumeUp,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Read Aloud",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
+
+                        // Voice Assistant Mic Button
+                        Button(
+                            onClick = {
+                                if (!hasMicPermission) {
+                                    onRequestMicPermission()
+                                } else {
+                                    viewModel.onMicButtonClicked()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Voice Command",
+                                color = Color.Black,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
                     }
                 }
             }
