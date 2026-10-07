@@ -20,9 +20,11 @@ release/
 .gradle/
 build/
 app/build/
+**/build/
 
 # Local configuration file (contains personal SDK paths - CRITICAL NEVER COMMIT)
 local.properties
+**/local.properties
 
 # Proguard / R8
 proguard/
@@ -32,6 +34,7 @@ proguard/
 
 # Android Studio / IntelliJ IDEA navigation and cache files
 .idea/
+/.idea/
 *.iml
 *.iws
 *.ipr
@@ -40,3 +43,6 @@ proguard/
 # OS specific files
 .DS_Store
 Thumbs.db
+/captures
+.externalNativeBuild
+.cxx/
