@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import com.intellguide.saarthi.ui.Screen
 import com.intellguide.saarthi.ui.VoiceViewModel
 import com.intellguide.saarthi.ui.screens.CameraPreviewScreen
+import com.intellguide.saarthi.ui.screens.CurrencyDetectorScreen
 import com.intellguide.saarthi.ui.screens.DashboardScreen
 import com.intellguide.saarthi.ui.screens.ModuleDetailScreen
 import com.intellguide.saarthi.ui.screens.VoiceScreen
@@ -169,13 +170,16 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Screen.CurrencyDetector -> {
-                                ModuleDetailScreen(
-                                    title = "Currency Detection",
-                                    subtitle = "Identifies Indian Rupee currency notes (₹10, ₹20, ₹50, ₹100, ₹200, ₹500)",
-                                    icon = Icons.Default.CurrencyRupee,
-                                    accentColor = Color(0xFFF59E0B),
-                                    statusText = "Currency classifier ready. Hold the note in camera view.",
+                                CurrencyDetectorScreen(
                                     viewModel = voiceViewModel,
+                                    hasCameraPermission = hasCameraPermission,
+                                    hasMicPermission = hasMicPermission,
+                                    onRequestCameraPermission = {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                    },
+                                    onRequestMicPermission = {
+                                        micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    },
                                     onBack = {
                                         voiceViewModel.navigateTo(Screen.HomeDashboard, "Returned to Home Dashboard.")
                                     }

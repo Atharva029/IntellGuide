@@ -92,6 +92,7 @@ dependencies {
     // Google ML Kit On-Device Vision Engine (Bundled Model for Zero-Setup Real-Time Detection)
     implementation("com.google.mlkit:object-detection:17.0.1")
     implementation("com.google.mlkit:image-labeling:17.0.8")
+    implementation("com.google.mlkit:text-recognition:16.0.0")
 
     // Debugging Tools
     debugImplementation("androidx.compose.ui:ui-tooling")
