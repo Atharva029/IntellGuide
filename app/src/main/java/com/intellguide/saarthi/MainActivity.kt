@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
             SaarthiTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     var hasMicPermission by remember {
                         mutableStateOf(
@@ -79,7 +79,31 @@ class MainActivity : ComponentActivity() {
                         if (isGranted) {
                             voiceViewModel.speakFeedback("Camera permission granted. Starting live environmental perception.")
                         } else {
-                            voiceViewModel.speakFeedback("Camera permission is required to analyze your surroundings.")
+                            voiceViewModel.speakFeedback(
+                                "Camera permission is required for live camera preview and object detection."
+                            )
+                        }
+                    }
+
+                    var hasCallPermission by remember {
+                        mutableStateOf(
+                            ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                Manifest.permission.CALL_PHONE
+                            ) == PackageManager.PERMISSION_GRANTED
+                        )
+                    }
+
+                    val callPermissionLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.RequestPermission()
+                    ) { isGranted ->
+                        hasCallPermission = isGranted
+                        voiceViewModel.onCallPermissionResult(isGranted)
+                    }
+
+                    LaunchedEffect(Unit) {
+                        voiceViewModel.requestCallPermissionEvent.collect {
+                            callPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
                         }
                     }
 
@@ -201,15 +225,52 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Screen.EmergencySos -> {
-                                ModuleDetailScreen(
-                                    title = "Emergency SOS",
-                                    subtitle = "Fast location broadcast and emergency contact alert",
-                                    icon = Icons.Default.Sos,
-                                    accentColor = Color(0xFFEF4444),
-                                    statusText = "Emergency channel active. Location ready to broadcast.",
-                                    viewModel = voiceViewModel,
+                                val registration by voiceViewModel.emergencyRegistration.collectAsState()
+                                com.intellguide.saarthi.emergency.sos.SosScreen(
+                                    registration = registration,
+                                    onTriggerSos = {
+                                        voiceViewModel.triggerEmergencySos()
+                                    },
+                                    onCallContact1Direct = {
+                                        voiceViewModel.callContact1Direct()
+                                    },
+                                    onCallContact2Direct = {
+                                        voiceViewModel.callContact2Direct()
+                                    },
+                                    onNavigateToRegistration = {
+                                        voiceViewModel.navigateTo(Screen.Registration)
+                                    },
                                     onBack = {
                                         voiceViewModel.navigateTo(Screen.HomeDashboard, "Returned to Home Dashboard.")
+                                    },
+                                    onSpeak = { text ->
+                                        voiceViewModel.speakFeedback(text)
+                                    }
+                                )
+                            }
+
+                            Screen.Registration -> {
+                                val registration by voiceViewModel.emergencyRegistration.collectAsState()
+                                com.intellguide.saarthi.emergency.registration.RegistrationScreen(
+                                    existingRegistration = registration,
+                                    onSaveRegistration = { uName, c1N, c1P, c2N, c2P ->
+                                        voiceViewModel.saveEmergencyRegistration(
+                                            userName = uName,
+                                            c1Name = c1N,
+                                            c1Phone = c1P,
+                                            c2Name = c2N,
+                                            c2Phone = c2P
+                                        ) { result ->
+                                            if (result.isSuccess) {
+                                                voiceViewModel.navigateTo(Screen.EmergencySos, "Emergency registration saved.")
+                                            }
+                                        }
+                                    },
+                                    onBack = {
+                                        voiceViewModel.navigateTo(Screen.EmergencySos, "Returned to Emergency SOS.")
+                                    },
+                                    onSpeakFeedback = { text ->
+                                        voiceViewModel.speakFeedback(text)
                                     }
                                 )
                             }

@@ -11,4 +11,6 @@ sealed class Screen(val route: String) {
     object CurrencyDetector : Screen("currency_detector")
     object DailyRoutes : Screen("daily_routes")
     object EmergencySos : Screen("emergency_sos")
+    object Registration : Screen("registration")
 }
+

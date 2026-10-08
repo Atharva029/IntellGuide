@@ -60,4 +60,11 @@ object CocoLabels {
             word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
         }
     }
+
+    /**
+     * Determines if a class is an immediate physical navigation obstacle.
+     */
+    fun isNavigationalObstacle(label: String): Boolean {
+        return isWalkingHazard(label)
+    }
 }

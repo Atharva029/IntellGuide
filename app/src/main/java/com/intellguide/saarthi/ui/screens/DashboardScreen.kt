@@ -121,7 +121,10 @@ fun DashboardScreen(
                             viewModel.speakFeedback("Daily Routes selected.")
                             onNavigateTo(Screen.DailyRoutes)
                         }
-                        3 -> viewModel.speakFeedback("Profile and emergency contacts selected.")
+                        3 -> {
+                            viewModel.speakFeedback("Opening Emergency Setup and Registration.")
+                            onNavigateTo(Screen.Registration)
+                        }
                     }
                 }
             )

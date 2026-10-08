@@ -53,8 +53,8 @@ object CommandProcessor {
             isEmergency(normalized) -> CommandResult(
                 intent = VoiceIntent.EMERGENCY_SOS,
                 rawText = spokenText,
-                spokenResponse = "Emergency alert triggered. Sending your location to your emergency contacts.",
-                actionTitle = "Emergency SOS Dispatched"
+                spokenResponse = "Emergency alert triggered. Starting emergency assistance.",
+                actionTitle = "Emergency SOS Triggered"
             )
 
             // 3. Indian Currency Recognition
@@ -191,10 +191,11 @@ object CommandProcessor {
     }
 
     private fun isEmergency(text: String): Boolean {
-        return text.contains("help me") || text.contains("emergency") ||
-               text.contains("sos") || text.contains("send help") ||
+        return text.contains("sos") || text.contains("emergency") ||
+               text.contains("help") || text.contains("need help") ||
+               text.contains("call emergency") || text.contains("send help") ||
                text.contains("call for help") || text.contains("danger") ||
-               text == "help"
+               text == "help" || text == "sos" || text == "emergency"
     }
 
     private fun isVoiceMode(text: String): Boolean {
