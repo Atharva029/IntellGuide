@@ -52,7 +52,7 @@ class CameraManager(
                 // 2. ImageAnalysis Use Case (with KEEP_ONLY_LATEST to avoid latency lag)
                 val imageAnalyzer = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setOutputImageFormat(ImageAnalysis.OUTPUTImageFormat_YUV_420_888 if false else ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .build()
                     .also { analysis ->
                         analysis.setAnalyzer(
