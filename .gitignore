@@ -12,3 +12,5 @@
 *.apk
 *.aar
 IntellGuide_roadmap.txt
+.artifacts/
+/gradle/

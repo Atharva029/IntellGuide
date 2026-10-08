@@ -3,6 +3,7 @@ package com.intellguide.intellguide
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -25,6 +26,7 @@ import com.intellguide.intellguide.ui.screens.CameraPreviewScreen
 import com.intellguide.intellguide.ui.screens.CurrencyDetectorScreen
 import com.intellguide.intellguide.ui.screens.DashboardScreen
 import com.intellguide.intellguide.ui.screens.ModuleDetailScreen
+import com.intellguide.intellguide.ui.screens.OcrScreen
 import com.intellguide.intellguide.ui.screens.VoiceScreen
 import com.intellguide.intellguide.ui.theme.IntellGuideTheme
 
@@ -156,13 +158,12 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Screen.OcrReader -> {
-                                ModuleDetailScreen(
-                                    title = "Read Text (OCR)",
-                                    subtitle = "Reads signs, notice boards, documents, and labels",
-                                    icon = Icons.Default.TextFields,
-                                    accentColor = Color(0xFF8B5CF6),
-                                    statusText = "Text recognition engine ready. Point camera at text.",
+                                OcrScreen(
                                     viewModel = voiceViewModel,
+                                    hasCameraPermission = hasCameraPermission,
+                                    onRequestCameraPermission = {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                    },
                                     onBack = {
                                         voiceViewModel.navigateTo(Screen.HomeDashboard, "Returned to Home Dashboard.")
                                     }
@@ -217,6 +218,21 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Hardware Key Intercept for Visually Impaired Accessibility:
+     * Pressing physical side Volume Up or Volume Down buttons instantly activates/toggles voice listening
+     * so blind users do not need to locate or tap any screen button.
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                voiceViewModel.onMicButtonClicked()
+                true
+            }
+            else -> super.onKeyDown(keyCode, event)
         }
     }
 }
