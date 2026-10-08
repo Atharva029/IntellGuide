@@ -1,14 +1,7 @@
-# Android / Gradle ignores
-*.iml
-.gradle/
-**/local.properties
-/.idea/
-.DS_Store
-/build
+﻿.gradle/
+.idea/
+build/
 **/build/
-/captures
-.externalNativeBuild
-.cxx/
-*.apk
-*.aar
-IntellGuide_roadmap.txt
+local.properties
+*.iml
+.DS_Store
